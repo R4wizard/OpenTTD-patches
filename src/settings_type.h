@@ -276,6 +276,7 @@ struct NetworkSettings {
 	uint16 max_lag_time;                                  ///< maximum amount of time, in game ticks, a client may be lagging behind the server
 	bool   pause_on_join;                                 ///< pause the game when people join
 	uint16 server_port;                                   ///< port the server listens on
+	uint16 server_http_port;                               ///< port the server listens on for the http interface
 	uint16 server_admin_port;                             ///< port the server listens on for the admin network
 	bool   server_admin_chat;                             ///< allow private chat for the server to be distributed to the admin network
 	char   server_name[NETWORK_NAME_LENGTH];              ///< name of the server
