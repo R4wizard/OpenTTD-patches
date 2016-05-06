@@ -26,6 +26,14 @@ public:
 
 	bool Listen();
 	void Close();
+
+	/** This handler will get our instance via mg_connection::mgr::user_data. As the docs say:
+		https://docs.cesanta.com/mongoose/dev/#/c-api/net.h/mg_mgr_init/ For C++ example
+
+		Then we pass it to the non-static copy
+	**/
+	static void HandleEvent_Callback(struct mg_connection *nc, int ev, void *ev_data);
+	void HandleEvent(struct mg_connection *nc, int ev, void *ev_data);
 };
 
 #endif /* ENABLE_NETWORK */
