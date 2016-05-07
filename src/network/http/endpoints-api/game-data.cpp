@@ -10,13 +10,19 @@
 #include "../../../debug.h"
 
 #include "../../../settings_type.h"
+#include "../../../company_func.h"
+#include "../../../company_base.h"
 #include "../../../map_func.h"
 #include "../../../date_func.h"
 #include "../../../string_func.h"
+#include "../../../strings_func.h"
 #include "../../network_internal.h"
+#include "../../network_admin.h"
 #include "../../network_func.h"
+#include "../../network_base.h"
 #include "../../network.h"
-#include "../../../company_base.h"
+#include "../../../error.h"
+#include "../../../rev.h"
 #include "../../../newgrf_config.h"
 
 #include "../../../3rdparty/mongoose/mongoose.h"
@@ -25,84 +31,186 @@
 
 #include "game-data.h"
 
+
 void HandleEndpoint_API_GameData(struct mg_connection *nc, int ev, void *ev_data)
 {
 	NetworkHTTPHandler* handler = NetworkHTTPHandler::GetSingleton(nc);
 
 	JSONWriter writer(HTTP_API_SUCCESS);
 	writer.StartObject();
-		writer.StartObject("server");
-			writer.AddString("version", "");
-			writer.AddString("host", "");
-			writer.StartObject("ports");
-				writer.AddLong("game", _settings_client.network.server_port);
-				writer.AddLong("http", _settings_client.network.server_http_port);
-				writer.AddLong("admin", _settings_client.network.server_admin_port);
+		/***** SERVER INFORMATION *****/
+		writer.StartObject("Server");
+			writer.AddString("Name", _settings_client.network.server_name);
+			writer.AddString("Version", _openttd_revision);
+			writer.StartObject("Ports");
+				writer.AddLong("Game", _settings_client.network.server_port);
+				writer.AddLong("HTTP", _settings_client.network.server_http_port);
+				writer.AddLong("Admin", _settings_client.network.server_admin_port);
 			writer.EndObject();
-			writer.AddBool("dedicated", _network_dedicated);
-			writer.AddBool("password", !StrEmpty(_settings_client.network.server_password));
-			writer.AddString("language", NetworkLanguageToString(_settings_client.network.server_lang));
-			writer.AddLong("maximum_companies", _settings_client.network.max_companies);
-			writer.AddLong("maximum_clients", _settings_client.network.max_clients);
-			writer.AddLong("maximum_spectators", _settings_client.network.max_spectators);
+			writer.AddBool("IsDedicated", _network_dedicated);
+			writer.AddBool("IsPassworded", !StrEmpty(_settings_client.network.server_password));
+			writer.AddString("Language", NetworkLanguageToString(_settings_client.network.server_lang));
+			writer.AddLong("MaximumCompanies", _settings_client.network.max_companies);
+			writer.AddLong("MaximumClients", _settings_client.network.max_clients);
+			writer.AddLong("MaximumSpectators", _settings_client.network.max_spectators);
 		writer.EndObject();
-		writer.StartObject("date");
-			writer.AddLong("start", ConvertYMDToDate(_settings_game.game_creation.starting_year, 0, 1));
-			writer.AddLong("current", _date);
+
+		/***** DATE INFORMATION *****/
+		writer.StartObject("Date");
+			writer.AddLong("Start", ConvertYMDToDate(_settings_game.game_creation.starting_year, 0, 1));
+			writer.AddLong("Current", _date);
 		writer.EndObject();
-		writer.StartArray("companies");
-			for(int i = 0; i < Company::GetNumItems(); i++)
-				writer.AddBool(true);
-		writer.EndArray();
-		writer.StartArray("clients");
-			for(int i = 0; i < _network_game_info.clients_on; i++)
-				writer.AddBool(true);
-		writer.EndArray();
-		writer.StartArray("spectators");
-			for(int i = 0; i < NetworkSpectatorCount(); i++)
-				writer.AddBool(true);
-		writer.EndArray();
-		writer.StartObject("map");
-			writer.AddLong("width", MapSizeX());
-			writer.AddLong("height", MapSizeY());
+
+		/***** MAP INFORMATION *****/
+		writer.StartObject("Map");
+			writer.AddString("Name", _network_game_info.map_name);
+			writer.AddLong("Width", MapSizeX());
+			writer.AddLong("Height", MapSizeY());
 			switch (_settings_game.game_creation.landscape) {
-				case LT_TEMPERATE: writer.AddString("set", "temperate"); break;
-				case LT_ARCTIC:    writer.AddString("set", "arctic");    break;
-				case LT_TROPIC:    writer.AddString("set", "tropical");  break;
-				case LT_TOYLAND:   writer.AddString("set", "toyland");   break;
-				default: writer.AddLong("set", _settings_game.game_creation.landscape); break;
+				case LT_TEMPERATE: writer.AddString("Set", "Temperate"); break;
+				case LT_ARCTIC:    writer.AddString("Set", "Arctic");    break;
+				case LT_TROPIC:    writer.AddString("Set", "Tropical");  break;
+				case LT_TOYLAND:   writer.AddString("Set", "Toyland");   break;
+				default: writer.AddLong("Set", _settings_game.game_creation.landscape); break;
 			}
-			writer.StartArray("newgrfs");
-				const GRFConfig *c;
-				for(c = _grfconfig; c != NULL; c = c->next) {
-					if(!HasBit(c->flags, GCF_STATIC)) {
-						writer.StartObject();
-							char idbuf[256];
-							seprintf(idbuf, lastof(idbuf), "%08X", BSWAP32(c->ident.grfid));
-							writer.AddString("id", idbuf);
-
-							char md5buf[sizeof(c->ident.md5sum) * 2 + 1];
-							md5sumToString(md5buf, lastof(md5buf), c->ident.md5sum);
-							writer.AddString("md5sum", md5buf);
-
-							const char* name = c->GetName();
-							if(name != NULL)
-								writer.AddString("name", name);
-
-							const char* url = c->GetURL();
-							if(url != NULL)
-								writer.AddString("url", url);
-
-							const char* desc = c->GetDescription();
-							if(desc != NULL && strcmp(desc, name) != 0)
-								writer.AddString("description", desc);
-
-							writer.AddLong("version", c->version);
-						writer.EndObject();
-					}
-				}
-			writer.EndArray();
 		writer.EndObject();
+
+		/***** NEWGRFS INFORMATION *****/
+		writer.StartArray("NewGRFs");
+			const GRFConfig *c;
+			for(c = _grfconfig; c != NULL; c = c->next) {
+				if(!HasBit(c->flags, GCF_STATIC)) {
+					writer.StartObject();
+						char idbuf[256];
+						seprintf(idbuf, lastof(idbuf), "%08X", BSWAP32(c->ident.grfid));
+						writer.AddString("ID", idbuf);
+
+						char md5buf[sizeof(c->ident.md5sum) * 2 + 1];
+						md5sumToString(md5buf, lastof(md5buf), c->ident.md5sum);
+						writer.AddString("MD5Sum", md5buf);
+
+						const char* name = c->GetName();
+						if(name != NULL)
+							writer.AddString("Name", name);
+
+						const char* url = c->GetURL();
+						if(url != NULL)
+							writer.AddString("URL", url);
+
+						const char* desc = c->GetDescription();
+						if(desc != NULL && strcmp(desc, name) != 0)
+							writer.AddString("Description", desc);
+
+						writer.AddLong("Version", c->version);
+					writer.EndObject();
+				}
+			}
+		writer.EndArray();
+
+		/***** COMAPNY INFORMATION *****/
+		const Company *company;
+		writer.StartArray("Companies");
+			FOR_ALL_COMPANIES(company) {
+				writer.StartObject();
+					NetworkCompanyStats company_stats[MAX_COMPANIES];
+					NetworkPopulateCompanyStats(company_stats);
+
+					writer.AddLong("ID", company->index);
+
+					char company_name[NETWORK_COMPANY_NAME_LENGTH];
+					SetDParam(0, company->index);
+					GetString(company_name, STR_COMPANY_NAME, lastof(company_name));
+					writer.AddString("Name", company_name);
+
+					char president_name[MAX_LENGTH_PRESIDENT_NAME_CHARS];
+					SetDParam(0, company->index);
+					GetString(president_name, STR_PRESIDENT_NAME, lastof(president_name));
+					writer.AddString("President", president_name);
+
+					writer.AddBool("IsAI", company->is_ai);
+					writer.AddBool("IsPassworded", !StrEmpty(_network_company_states[company->index].password));
+
+					char colour[512];
+					GetString(colour, STR_COLOUR_DARK_BLUE + _company_colours[company->index], lastof(colour));
+					writer.AddString("Colour", colour);
+
+					writer.AddLong("InauguratedYear", company->inaugurated_year);
+					writer.StartObject("Finances");
+						char moneybuf[256];
+						seprintf(moneybuf, lastof(moneybuf), OTTD_PRINTF64, (int64)company->money);
+						writer.AddString("Money",  moneybuf);
+
+						char loanbuf[256];
+						seprintf(loanbuf, lastof(loanbuf), OTTD_PRINTF64, (int64)company->current_loan);
+						writer.AddString("Loan", loanbuf);
+
+						char valuebuf[256];
+						seprintf(valuebuf, lastof(valuebuf), OTTD_PRINTF64, (int64)CalculateCompanyValue(company));
+						writer.AddString("Value",  valuebuf);
+
+						Money income = 0;
+						if (_cur_year - 1 == company->inaugurated_year) {
+							for (uint i = 0; i < lengthof(company->yearly_expenses[2]); i++)
+								income -= company->yearly_expenses[2][i];
+						} else {
+							for (uint i = 0; i < lengthof(company->yearly_expenses[1]); i++)
+								income -= company->yearly_expenses[1][i];
+						}
+
+						char incomebuf[256];
+						seprintf(incomebuf, lastof(incomebuf), OTTD_PRINTF64, (int64)income);
+						writer.AddString("Income",  incomebuf);
+					writer.EndObject();
+
+					writer.StartObject("Vehicles");
+						writer.AddLong("Train",    company_stats->num_vehicle[NETWORK_VEH_TRAIN]);
+						writer.AddLong("Lorry",    company_stats->num_station[NETWORK_VEH_LORRY]);
+						writer.AddLong("Bus",      company_stats->num_station[NETWORK_VEH_BUS]);
+						writer.AddLong("Aircraft", company_stats->num_vehicle[NETWORK_VEH_PLANE]);
+						writer.AddLong("Ship",     company_stats->num_vehicle[NETWORK_VEH_SHIP]);
+					writer.EndObject();
+
+					writer.StartObject("Stations");
+						writer.AddLong("Train",    company_stats->num_station[NETWORK_VEH_TRAIN]);
+						writer.AddLong("Lorry",    company_stats->num_station[NETWORK_VEH_LORRY]);
+						writer.AddLong("Bus",      company_stats->num_station[NETWORK_VEH_BUS]);
+						writer.AddLong("Aircraft", company_stats->num_station[NETWORK_VEH_PLANE]);
+						writer.AddLong("Ship",     company_stats->num_station[NETWORK_VEH_SHIP]);
+					writer.EndObject();
+				writer.EndObject();
+			}
+		writer.EndArray();
+
+		/***** CLIENT INFORMATION *****/
+		writer.StartArray("Clients");
+			NetworkClientInfo *ci;
+			FOR_ALL_CLIENT_INFOS(ci) {
+				if(ci->client_playas != COMPANY_SPECTATOR) {
+					writer.StartObject();
+						writer.AddLong("ID", ci->client_id);
+						writer.AddString("Name", ci->client_name);
+
+						int company_id = ci->client_playas + (Company::IsValidID(ci->client_playas) ? 1 : 0);
+						if(company_id != 255)
+							writer.AddLong("Company", company_id);
+
+						writer.AddBool("IsServer", (ci->client_id == CLIENT_ID_SERVER));
+					writer.EndObject();
+				}
+			}
+		writer.EndArray();
+
+		/***** SPECTATOR INFORMATION *****/
+		writer.StartArray("Spectators");
+			FOR_ALL_CLIENT_INFOS(ci) {
+				if (ci->client_playas == COMPANY_SPECTATOR && ci->client_id != CLIENT_ID_SERVER) {
+					writer.StartObject();
+						writer.AddLong("ID", ci->client_id);
+						writer.AddString("Name", ci->client_name);
+					writer.EndObject();
+				}
+			}
+		writer.EndArray();
 	writer.EndObject();
 	handler->Send(nc, writer.GetString());
 }
