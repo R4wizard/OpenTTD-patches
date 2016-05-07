@@ -191,8 +191,8 @@ void HandleEndpoint_API_GameData(struct mg_connection *nc, int ev, void *ev_data
 						writer.AddString("Name", ci->client_name);
 
 						int company_id = ci->client_playas + (Company::IsValidID(ci->client_playas) ? 1 : 0);
-						if(company_id != 255)
-							writer.AddLong("Company", company_id);
+						if(company_id != 255 && company_id > 0)
+							writer.AddLong("Company", company_id - 1);
 
 						writer.AddBool("IsServer", (ci->client_id == CLIENT_ID_SERVER));
 					writer.EndObject();
