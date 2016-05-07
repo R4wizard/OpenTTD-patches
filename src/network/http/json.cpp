@@ -67,6 +67,16 @@ void JSONWriter::AddLong(const char* key, long value)
 	this->ConcatJSON("s: i", key, value);
 }
 
+void JSONWriter::AddDouble(double value)
+{
+	this->ConcatJSON("f", value);
+}
+
+void JSONWriter::AddDouble(const char* key, double value)
+{
+	this->ConcatJSON("s: f", key, value);
+}
+
 void JSONWriter::AddBool(bool value)
 {
 	this->ConcatJSON((value == true) ? "T" : "F");

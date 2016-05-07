@@ -34,6 +34,8 @@ public:
 	void AddString(const char* key, const char* value);
 	void AddLong(long value);
 	void AddLong(const char* key, long value);
+	void AddDouble(double value);
+	void AddDouble(const char* key, double value);
 	void AddBool(bool value);
 	void AddBool(const char* key, bool value);
 	void AddNull();
