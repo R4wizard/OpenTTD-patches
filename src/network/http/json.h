@@ -1,7 +1,7 @@
 /* $Id$ */
 
 /**
- * @file web/json.h put a better description here
+ * @file http/json.h put a better description here
  */
 
 #ifndef NETWORK_HTTP_JSON_H

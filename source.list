@@ -1084,6 +1084,8 @@ network/http/json.cpp
 network/http/json.h
 network/http/handler.cpp
 network/http/handler.h
+network/http/endpoints-api/game-data.cpp
+network/http/endpoints-api/fail-data.cpp
 
 # Pathfinder
 pathfinder/follow_track.hpp
