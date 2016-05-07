@@ -30,9 +30,13 @@ public:
 
 	const char* GetString();
 
+	void AddString(const char* value);
 	void AddString(const char* key, const char* value);
+	void AddLong(long value);
 	void AddLong(const char* key, long value);
+	void AddBool(bool value);
 	void AddBool(const char* key, bool value);
+	void AddNull();
 	void AddNull(const char* key);
 
 	void StartObject();

@@ -47,9 +47,19 @@ const char* JSONWriter::GetString()
 	return this->buffer;
 }
 
+void JSONWriter::AddString(const char* value)
+{
+	this->ConcatJSON("s", value);
+}
+
 void JSONWriter::AddString(const char* key, const char* value)
 {
 	this->ConcatJSON("s: s", key, value);
+}
+
+void JSONWriter::AddLong(long value)
+{
+	this->ConcatJSON("i", value);
 }
 
 void JSONWriter::AddLong(const char* key, long value)
@@ -57,9 +67,19 @@ void JSONWriter::AddLong(const char* key, long value)
 	this->ConcatJSON("s: i", key, value);
 }
 
+void JSONWriter::AddBool(bool value)
+{
+	this->ConcatJSON((value == true) ? "T" : "F");
+}
+
 void JSONWriter::AddBool(const char* key, bool value)
 {
 	this->ConcatJSON((value == true) ? "s: T" : "s: F", key);
+}
+
+void JSONWriter::AddNull()
+{
+	this->ConcatJSON("N");
 }
 
 void JSONWriter::AddNull(const char* key)
