@@ -11,11 +11,14 @@
 
 void NetworkHTTPInitialize();
 void NetworkHTTPClose();
+void NetworkHTTPTick();
 
 /** Base handler for all web server requests */
 class NetworkHTTPHandler {
 protected:
 
+	struct mg_connection *connection;
+	struct mg_mgr *manager;
 	uint16 port;
 
 public:
@@ -27,13 +30,15 @@ public:
 	bool Listen();
 	void Close();
 
-	/** This handler will get our instance via mg_connection::mgr::user_data. As the docs say:
-		https://docs.cesanta.com/mongoose/dev/#/c-api/net.h/mg_mgr_init/ For C++ example
+	static NetworkHTTPHandler* GetSingleton(struct mg_connection *nc);
+	static void HandleEvent(struct mg_connection *nc, int ev, void *ev_data);
+	static void HandleEndpoint_API_GameData(struct mg_connection *nc, int ev, void *ev_data);
+	static void HandleEndpoint_API_FailData(struct mg_connection *nc, int ev, void *ev_data);
 
-		Then we pass it to the non-static copy
-	**/
-	static void HandleEvent_Callback(struct mg_connection *nc, int ev, void *ev_data);
-	void HandleEvent(struct mg_connection *nc, int ev, void *ev_data);
+	static char* ConcatString(const char* a, const char* b);
+
+	void SendResponse(struct mg_connection *nc, const char* response);
+	void HandleTick();
 };
 
 #endif /* ENABLE_NETWORK */

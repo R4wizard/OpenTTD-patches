@@ -1080,6 +1080,8 @@ network/core/udp.cpp
 network/core/udp.h
 
 # Network HTTP
+network/http/json.cpp
+network/http/json.h
 network/http/handler.cpp
 network/http/handler.h
 

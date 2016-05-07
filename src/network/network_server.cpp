@@ -32,6 +32,7 @@
 #include "../core/pool_func.hpp"
 #include "../core/random_func.hpp"
 #include "../rev.h"
+#include "http/handler.h"
 
 #include "../safeguards.h"
 
@@ -1819,6 +1820,7 @@ void NetworkServer_Tick(bool send_frame)
 		send_sync = true;
 	}
 #endif
+	NetworkHTTPTick();
 
 	/* Now we are done with the frame, inform the clients that they can
 	 *  do their frame! */
