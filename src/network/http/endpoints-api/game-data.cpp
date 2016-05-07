@@ -31,22 +31,6 @@ void HandleEndpoint_API_GameData(struct mg_connection *nc, int ev, void *ev_data
 
 	JSONWriter writer(HTTP_API_SUCCESS);
 	writer.StartObject();
-		writer.StartArray("newgrfs");
-			const GRFConfig *c;
-			for(c = _grfconfig; c != NULL; c = c->next) {
-				if(!HasBit(c->flags, GCF_STATIC)) {
-					writer.StartObject();
-						char idbuf[256];
-						seprintf(idbuf, lastof(idbuf), "%08X", BSWAP32(c->ident.grfid));
-						writer.AddString("id", idbuf);
-
-						char md5buf[sizeof(c->ident.md5sum) * 2 + 1];
-						md5sumToString(md5buf, lastof(md5buf), c->ident.md5sum);
-						writer.AddString("md5sum", md5buf);
-					writer.EndObject();
-				}
-			}
-		writer.EndArray();
 		writer.StartObject("server");
 			writer.AddString("version", "");
 			writer.AddString("host", "");
@@ -58,23 +42,26 @@ void HandleEndpoint_API_GameData(struct mg_connection *nc, int ev, void *ev_data
 			writer.AddBool("dedicated", _network_dedicated);
 			writer.AddBool("password", !StrEmpty(_settings_client.network.server_password));
 			writer.AddString("language", NetworkLanguageToString(_settings_client.network.server_lang));
+			writer.AddLong("maximum_companies", _settings_client.network.max_companies);
+			writer.AddLong("maximum_clients", _settings_client.network.max_clients);
+			writer.AddLong("maximum_spectators", _settings_client.network.max_spectators);
 		writer.EndObject();
 		writer.StartObject("date");
 			writer.AddLong("start", ConvertYMDToDate(_settings_game.game_creation.starting_year, 0, 1));
 			writer.AddLong("current", _date);
 		writer.EndObject();
-		writer.StartObject("companies");
-			writer.AddLong("current", Company::GetNumItems());
-			writer.AddLong("maximum", _settings_client.network.max_companies);
-		writer.EndObject();
-		writer.StartObject("clients");
-			writer.AddLong("current", _network_game_info.clients_on);
-			writer.AddLong("maximum", _settings_client.network.max_clients);
-		writer.EndObject();
-		writer.StartObject("spectators");
-			writer.AddLong("current", NetworkSpectatorCount());
-			writer.AddLong("maximum", _settings_client.network.max_spectators);
-		writer.EndObject();
+		writer.StartArray("companies");
+			for(int i = 0; i < Company::GetNumItems(); i++)
+				writer.AddBool(true);
+		writer.EndArray();
+		writer.StartArray("clients");
+			for(int i = 0; i < _network_game_info.clients_on; i++)
+				writer.AddBool(true);
+		writer.EndArray();
+		writer.StartArray("spectators");
+			for(int i = 0; i < NetworkSpectatorCount(); i++)
+				writer.AddBool(true);
+		writer.EndArray();
 		writer.StartObject("map");
 			writer.AddLong("width", MapSizeX());
 			writer.AddLong("height", MapSizeY());
@@ -85,6 +72,36 @@ void HandleEndpoint_API_GameData(struct mg_connection *nc, int ev, void *ev_data
 				case LT_TOYLAND:   writer.AddString("set", "toyland");   break;
 				default: writer.AddLong("set", _settings_game.game_creation.landscape); break;
 			}
+			writer.StartArray("newgrfs");
+				const GRFConfig *c;
+				for(c = _grfconfig; c != NULL; c = c->next) {
+					if(!HasBit(c->flags, GCF_STATIC)) {
+						writer.StartObject();
+							char idbuf[256];
+							seprintf(idbuf, lastof(idbuf), "%08X", BSWAP32(c->ident.grfid));
+							writer.AddString("id", idbuf);
+
+							char md5buf[sizeof(c->ident.md5sum) * 2 + 1];
+							md5sumToString(md5buf, lastof(md5buf), c->ident.md5sum);
+							writer.AddString("md5sum", md5buf);
+
+							const char* name = c->GetName();
+							if(name != NULL)
+								writer.AddString("name", name);
+
+							const char* url = c->GetURL();
+							if(url != NULL)
+								writer.AddString("url", url);
+
+							const char* desc = c->GetDescription();
+							if(desc != NULL && strcmp(desc, name) != 0)
+								writer.AddString("description", desc);
+
+							writer.AddLong("version", c->version);
+						writer.EndObject();
+					}
+				}
+			writer.EndArray();
 		writer.EndObject();
 	writer.EndObject();
 	handler->Send(nc, writer.GetString());
