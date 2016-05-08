@@ -776,6 +776,10 @@ script/squirrel_std.hpp
 3rdparty/squirrel/squirrel/squtils.h
 3rdparty/squirrel/squirrel/sqvm.h
 
+# Mongoose Web Server
+3rdparty/mongoose/mongoose.h
+3rdparty/mongoose/mongoose.c
+
 # AI Core
 ai/ai.hpp
 ai/ai_config.cpp
@@ -1074,6 +1078,14 @@ network/core/tcp_http.h
 network/core/tcp_listen.h
 network/core/udp.cpp
 network/core/udp.h
+
+# Network HTTP
+network/http/json.cpp
+network/http/json.h
+network/http/handler.cpp
+network/http/handler.h
+network/http/endpoints-api/game-data.cpp
+network/http/endpoints-api/fail-data.cpp
 
 # Pathfinder
 pathfinder/follow_track.hpp
