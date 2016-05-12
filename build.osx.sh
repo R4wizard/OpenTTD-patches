@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 export CORES=4
-export CNFFLAGS="--without-libbfd --enable-debug --enable-network"
+export CNFFLAGS="--without-libbfd"
 
 #Run it all
 export PATH="/bin:/sbin:/usr/bin:/usr/sbin:/usr/local/bin:/usr/local/sbin:/opt/local/bin:/opt/local/sbin:$HOME/.homebrew/Cellar"
