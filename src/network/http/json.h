@@ -14,7 +14,7 @@ class JSONWriter {
 protected:
 
 	int depth = 0;
-	bool* depth_map = new bool[1] { false };
+	bool* depth_map = new bool[1];
 
 	const char* buffer = "";
 	void Concat(const char* str);

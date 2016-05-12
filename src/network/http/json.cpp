@@ -15,7 +15,9 @@
 #include "json.h"
 #include "../../safeguards.h"
 
-JSONWriter::JSONWriter() { }
+JSONWriter::JSONWriter() {
+	depth_map[0] = false;
+}
 JSONWriter::JSONWriter(const char* prefix)
 {
 	this->Concat(prefix);
