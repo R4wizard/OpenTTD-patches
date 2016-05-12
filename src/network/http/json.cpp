@@ -16,21 +16,26 @@
 #include "../../safeguards.h"
 
 JSONWriter::JSONWriter() {
-	depth_map[0] = false;
+	this->depth_map.push_back(false);
 }
 JSONWriter::JSONWriter(const char* prefix)
 {
+	this->depth_map.push_back(false);
 	this->Concat(prefix);
 }
 
 void JSONWriter::Concat(const char* str)
 {
-	int buffer_size = strlen(this->buffer) + strlen(str) + 1;
-	char *concat_stream = new char[buffer_size];
-	strecpy( concat_stream, buffer, &concat_stream[buffer_size - 1] );
-	strecat( concat_stream, str, &concat_stream[buffer_size - 1] );
-	delete[] this->buffer;
-	this->buffer = concat_stream;
+	buffer << str;
+	// int buffer_size = strlen(this->buffer) + strlen(str) + 1;
+	// char *concat_stream = new char[buffer_size];
+	//
+	//
+	// strecpy( concat_stream, buffer, &concat_stream[buffer_size - 1] );
+	// strecat( concat_stream, str, &concat_stream[buffer_size - 1] );
+	//
+	// if (this->buffer != NULL) delete[] this->buffer;
+	// this->buffer = concat_stream;
 }
 
 void JSONWriter::ConcatJSON(const char* tpl, ...)
@@ -46,7 +51,7 @@ void JSONWriter::ConcatJSON(const char* tpl, ...)
 
 const char* JSONWriter::GetString()
 {
-	return this->buffer;
+	return this->buffer.str().c_str();
 }
 
 void JSONWriter::AddString(const char* value)
@@ -101,26 +106,30 @@ void JSONWriter::AddNull(const char* key)
 
 void JSONWriter::ConcatComma()
 {
-	if(this->depth_map[depth] == true)
+	// If not the first one,
+	if(this->depth_map.back() == true)
 		this->Concat(", ");
 
-	this->depth_map[depth] = true;
+	this->depth_map.back() = true;
 }
 
 void JSONWriter::IncreaseDepth()
 {
-	this->depth++;
-	bool* temp_depth_map = new bool[this->depth];
-	memcpy(&temp_depth_map, &depth_map, this->depth * sizeof(bool));
-	delete[] this->depth_map;
-	this->depth_map = temp_depth_map;
-	this->depth_map[this->depth] = false;
+	// this->depth++;
+
+	// bool* temp_depth_map = new bool[this->depth];
+	// memcpy(&temp_depth_map, &depth_map, this->depth * sizeof(bool));
+	//
+	// if (this->depth_map != NULL) delete[] this->depth_map;
+	// this->depth_map = temp_depth_map;
+	// this->depth_map[this->depth] = false;
+	this->depth_map.push_back(false);
 }
 
 void JSONWriter::DecreaseDepth()
 {
-	this->depth_map[this->depth] = false;
-	this->depth--;
+	this->depth_map.pop_back();
+	// this->depth--;
 }
 
 void JSONWriter::StartObject()
