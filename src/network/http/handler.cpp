@@ -92,7 +92,6 @@ void NetworkHTTPHandler::Tick()
 
 void NetworkHTTPHandler::Send(struct mg_connection *nc, const char* response)
 {
-	DEBUG(net, 1, "%s", response);
 	mg_printf(nc, response);
 	nc->flags |= MG_F_SEND_AND_CLOSE;
 }

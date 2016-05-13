@@ -17,7 +17,8 @@ class JSONWriter {
 protected:
 
 	std::list<bool> depth_map;
-	std::stringstream buffer;
+	std::stringstream build_buffer;
+	char* built_string = new char[1];
 
 	void Concat(const char* str);
 	void ConcatJSON(const char* tpl, ...);
@@ -29,6 +30,7 @@ protected:
 public:
 	JSONWriter();
 	JSONWriter(const char* prefix);
+	~JSONWriter();
 
 	const char* GetString();
 

@@ -17,32 +17,38 @@
 
 JSONWriter::JSONWriter() {
 	this->depth_map.push_back(false);
+	this->built_string[0] = ' ';
 }
+
 JSONWriter::JSONWriter(const char* prefix)
 {
 	this->depth_map.push_back(false);
 	this->Concat(prefix);
 }
 
+JSONWriter::~JSONWriter() {
+	delete[] this->built_string;
+}
+
 void JSONWriter::Concat(const char* str)
 {
-	buffer << str;
-	// int buffer_size = strlen(this->buffer) + strlen(str) + 1;
-	// char *concat_stream = new char[buffer_size];
-	//
-	//
-	// strecpy( concat_stream, buffer, &concat_stream[buffer_size - 1] );
-	// strecat( concat_stream, str, &concat_stream[buffer_size - 1] );
-	//
-	// if (this->buffer != NULL) delete[] this->buffer;
-	// this->buffer = concat_stream;
+	this->build_buffer << str;
+}
+
+void JSONWriter::ConcatComma()
+{
+	// 'true' if not the first one in the depth,
+	if(this->depth_map.back() == true)
+		this->Concat(", ");
+
+	this->depth_map.back() = true;
 }
 
 void JSONWriter::ConcatJSON(const char* tpl, ...)
 {
 	va_list args;
     va_start(args, tpl);
-	char temp[1024 + 32];
+	char temp[1024 + 32]; // Guess size
 	json_emit_va(temp, sizeof(temp), tpl, args);
 	this->ConcatComma();
 	this->Concat(temp);
@@ -51,7 +57,13 @@ void JSONWriter::ConcatJSON(const char* tpl, ...)
 
 const char* JSONWriter::GetString()
 {
-	return this->buffer.str().c_str();
+	std::string temp = this->build_buffer.str();
+	// Hopefully this means we only copy if the buffer has changed since last call
+	if (memcmp(this->built_string, temp.c_str(), sizeof(this->built_string[0])) != 0) {
+		delete[] this->built_string;
+		this->built_string = stredup(temp.c_str());
+	}
+	return this->built_string;
 }
 
 void JSONWriter::AddString(const char* value)
@@ -104,32 +116,14 @@ void JSONWriter::AddNull(const char* key)
 	this->ConcatJSON("s: N", key);
 }
 
-void JSONWriter::ConcatComma()
-{
-	// If not the first one,
-	if(this->depth_map.back() == true)
-		this->Concat(", ");
-
-	this->depth_map.back() = true;
-}
-
 void JSONWriter::IncreaseDepth()
 {
-	// this->depth++;
-
-	// bool* temp_depth_map = new bool[this->depth];
-	// memcpy(&temp_depth_map, &depth_map, this->depth * sizeof(bool));
-	//
-	// if (this->depth_map != NULL) delete[] this->depth_map;
-	// this->depth_map = temp_depth_map;
-	// this->depth_map[this->depth] = false;
 	this->depth_map.push_back(false);
 }
 
 void JSONWriter::DecreaseDepth()
 {
 	this->depth_map.pop_back();
-	// this->depth--;
 }
 
 void JSONWriter::StartObject()
