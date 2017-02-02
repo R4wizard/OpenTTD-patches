@@ -297,6 +297,54 @@ void str_strip_colours(char *str)
 	*dst = '\0';
 }
 
+/** Scans the string for a wchar and replace it with another wchar
+ * @param str The string buffer
+ * @param last The pointer to the last element of the string buffer
+ * @param find The character to find
+ * @param replace The character to replace, may be 0 to not insert any character
+ * @return The pointer to the terminating null-character in the string buffer
+ */
+char *str_replace_wchar(char *str, const char *last, WChar find, WChar replace)
+{
+	char *dst = str;
+
+	while (str <= last && *str != '\0') {
+		size_t len = Utf8EncodedCharLen(*str);
+		/* If the character is unknown, i.e. encoded length is 0
+		 * we assume worst case for the length check.
+		 * The length check is needed to prevent Utf8Decode to read
+		 * over the terminating '\0' if that happens to be placed
+		 * within the encoding of an UTF8 character. */
+		if ((len == 0 && str + 4 > last) || str + len > last) break;
+
+		WChar c;
+		len = Utf8Decode(&c, str);
+		/* It's possible to encode the string termination character
+		 * into a multiple bytes. This prevents those termination
+		 * characters to be skipped */
+		if (c == '\0') break;
+
+		if (c != find) {
+			/* Copy the character back. Even if dst is current the same as str
+			 * (i.e. no characters have been changed) this is quicker than
+			 * moving the pointers ahead by len */
+			if (dst + len > last) break;
+			do {
+				*dst++ = *str++;
+			} while (--len != 0);
+		} else {
+			str += len;
+			if (replace) {
+				len = Utf8EncodedCharLen(replace);
+				if (dst + len > last) break;
+				dst += Utf8Encode(dst, replace);
+			}
+		}
+	}
+	*dst = '\0';
+	return dst;
+}
+
 /**
  * Get the length of an UTF-8 encoded string in number of characters
  * and thus not the number of bytes that the encoded string contains.
@@ -343,9 +391,17 @@ bool strtolower(char *str)
  */
 bool IsValidChar(WChar key, CharSetFilter afilter)
 {
+#if !defined(STRGEN) && !defined(SETTINGSGEN)
+	extern WChar GetDecimalSeparatorChar();
+#endif
 	switch (afilter) {
 		case CS_ALPHANUMERAL:  return IsPrintable(key);
 		case CS_NUMERAL:       return (key >= '0' && key <= '9');
+#if !defined(STRGEN) && !defined(SETTINGSGEN)
+		case CS_NUMERAL_DECIMAL: return (key >= '0' && key <= '9') || key == '.' || key == GetDecimalSeparatorChar();
+#else
+		case CS_NUMERAL_DECIMAL: return (key >= '0' && key <= '9') || key == '.';
+#endif
 		case CS_NUMERAL_SPACE: return (key >= '0' && key <= '9') || key == ' ';
 		case CS_ALPHA:         return IsPrintable(key) && !(key >= '0' && key <= '9');
 		case CS_HEXADECIMAL:   return (key >= '0' && key <= '9') || (key >= 'a' && key <= 'f') || (key >= 'A' && key <= 'F');
@@ -564,6 +620,37 @@ static const char *SkipGarbage(const char *str)
 	return str;
 }
 
+static int _strnatcmpIntl(const char *s1, const char *s2) {
+	while (*s1 && *s2) {
+		if (IsInsideBS(*s1, '0', 10) && IsInsideBS(*s2, '0', 10)) {
+			uint n1 = 0;
+			uint n2 = 0;
+			for (; IsInsideBS(*s1, '0', 10); s1++) {
+				n1 = (n1 * 10) + (*s1 - '0');
+			}
+			for (; IsInsideBS(*s2, '0', 10); s2++) {
+				n2 = (n2 * 10) + (*s2 - '0');
+			}
+			if (n1 != n2) return n1 > n2 ? 1 : -1;
+		} else {
+			char c1 = tolower(*s1);
+			char c2 = tolower(*s2);
+			if (c1 != c2) {
+				return c1 > c2 ? 1 : -1;
+			}
+			s1++;
+			s2++;
+		}
+	}
+	if (*s1 && !*s2) {
+		return 1;
+	} else if (*s2 && !*s1) {
+		return -1;
+	} else {
+		return 0;
+	}
+}
+
 /**
  * Compares two strings using case insensitive natural sort.
  *
@@ -587,8 +674,8 @@ int strnatcmp(const char *s1, const char *s2, bool ignore_garbage_at_front)
 
 #endif /* WITH_ICU_SORT */
 
-	/* Do a normal comparison if ICU is missing or if we cannot create a collator. */
-	return strcasecmp(s1, s2);
+	/* Do a manual natural sort comparison if ICU is missing or if we cannot create a collator. */
+	return _strnatcmpIntl(s1, s2);
 }
 
 #ifdef WITH_ICU_SORT

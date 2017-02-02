@@ -31,7 +31,8 @@
 #include "object_base.h"
 #include "company_func.h"
 #include "pathfinder/npf/aystar.h"
-#include <list>
+#include "saveload/saveload.h"
+#include <deque>
 #include <set>
 
 #include "table/strings.h"
@@ -1117,7 +1118,7 @@ static bool FlowRiver(TileIndex spring, TileIndex begin)
 	SET_MARK(begin);
 
 	/* Breadth first search for the closest tile we can flow down to. */
-	std::list<TileIndex> queue;
+	std::deque<TileIndex> queue;
 	queue.push_back(begin);
 
 	bool found = false;
@@ -1222,7 +1223,7 @@ void GenerateLandscape(byte mode)
 
 	if (mode == GWM_HEIGHTMAP) {
 		SetGeneratingWorldProgress(GWP_LANDSCAPE, steps + GLS_HEIGHTMAP);
-		LoadHeightmap(_file_to_saveload.name);
+		LoadHeightmap(_file_to_saveload.detail_ftype, _file_to_saveload.name);
 		IncreaseGeneratingWorldProgress(GWP_LANDSCAPE);
 	} else if (_settings_game.game_creation.land_generator == LG_TERRAGENESIS) {
 		SetGeneratingWorldProgress(GWP_LANDSCAPE, steps + GLS_TERRAGENESIS);

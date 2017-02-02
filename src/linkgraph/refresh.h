@@ -14,7 +14,7 @@
 
 #include "../cargo_type.h"
 #include "../vehicle_base.h"
-#include <deque>
+#include <vector>
 #include <map>
 #include <set>
 
@@ -23,7 +23,7 @@
  */
 class LinkRefresher {
 public:
-	static void Run(Vehicle *v, bool allow_merge = true, bool is_full_loading = false);
+	static void Run(Vehicle *v, bool allow_merge = true, bool is_full_loading = false, uint32 cargo_mask = ~0);
 
 protected:
 	/**
@@ -79,7 +79,7 @@ protected:
 		bool operator<(const Hop &other) const;
 	};
 
-	typedef std::deque<RefitDesc> RefitList;
+	typedef std::vector<RefitDesc> RefitList;
 	typedef std::set<Hop> HopSet;
 
 	Vehicle *vehicle;           ///< Vehicle for which the links should be refreshed.
@@ -89,8 +89,9 @@ protected:
 	CargoID cargo;              ///< Cargo given in last refit order.
 	bool allow_merge;           ///< If the refresher is allowed to merge or extend link graphs.
 	bool is_full_loading;       ///< If the vehicle is full loading.
+	uint32 cargo_mask;          ///< Bit-mask of cargo IDs to refresh.
 
-	LinkRefresher(Vehicle *v, HopSet *seen_hops, bool allow_merge, bool is_full_loading);
+	LinkRefresher(Vehicle *v, HopSet *seen_hops, bool allow_merge, bool is_full_loading, uint32 cargo_mask);
 
 	bool HandleRefit(CargoID refit_cargo);
 	void ResetRefit();

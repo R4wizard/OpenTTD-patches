@@ -197,6 +197,39 @@ static void Load_ORDR()
 	}
 }
 
+const SaveLoad *GetOrderExtraInfoDescription()
+{
+	static const SaveLoad _order_extra_info_desc[] = {
+		SLE_ARR(OrderExtraInfo, cargo_type_flags, SLE_UINT8, NUM_CARGO),
+		SLE_END()
+	};
+
+	return _order_extra_info_desc;
+}
+
+void Save_ORDX()
+{
+	Order *order;
+
+	FOR_ALL_ORDERS(order) {
+		if (order->extra) {
+			SlSetArrayIndex(order->index);
+			SlObject(order->extra.get(), GetOrderExtraInfoDescription());
+		}
+	}
+}
+
+void Load_ORDX()
+{
+	int index;
+	while ((index = SlIterateArray()) != -1) {
+		Order *order = Order::GetIfValid(index);
+		assert(order != NULL);
+		order->AllocExtraInfo();
+		SlObject(order->extra.get(), GetOrderExtraInfoDescription());
+	}
+}
+
 static void Ptrs_ORDR()
 {
 	/* Orders from old savegames have pointers corrected in Load_ORDR */
@@ -266,6 +299,7 @@ const SaveLoad *GetOrderBackupDescription()
 		 SLE_CONDVAR(OrderBackup, current_order_time,       SLE_UINT32,                176, SL_MAX_VERSION),
 		 SLE_CONDVAR(OrderBackup, lateness_counter,         SLE_INT32,                 176, SL_MAX_VERSION),
 		 SLE_CONDVAR(OrderBackup, timetable_start,          SLE_INT32,                 176, SL_MAX_VERSION),
+		SLE_CONDVAR_X(OrderBackup,timetable_start_subticks, SLE_UINT16,                  0, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLES_START_TICKS, 2)),
 		 SLE_CONDVAR(OrderBackup, vehicle_flags,            SLE_FILE_U8 | SLE_VAR_U16, 176, 179),
 		 SLE_CONDVAR(OrderBackup, vehicle_flags,            SLE_UINT16,                180, SL_MAX_VERSION),
 		     SLE_REF(OrderBackup, orders,                   REF_ORDER),
@@ -311,5 +345,6 @@ static void Ptrs_BKOR()
 extern const ChunkHandler _order_chunk_handlers[] = {
 	{ 'BKOR', Save_BKOR, Load_BKOR, Ptrs_BKOR, NULL, CH_ARRAY},
 	{ 'ORDR', Save_ORDR, Load_ORDR, Ptrs_ORDR, NULL, CH_ARRAY},
-	{ 'ORDL', Save_ORDL, Load_ORDL, Ptrs_ORDL, NULL, CH_ARRAY | CH_LAST},
+	{ 'ORDL', Save_ORDL, Load_ORDL, Ptrs_ORDL, NULL, CH_ARRAY},
+	{ 'ORDX', Save_ORDX, Load_ORDX, NULL,      NULL, CH_SPARSE_ARRAY | CH_LAST},
 };

@@ -1191,7 +1191,7 @@ static bool DrawRoadAsSnowDesert(TileIndex tile, Roadside roadside)
  * @param ti   information about the tile (slopes, height etc)
  * @param tram the roadbits for the tram
  */
-void DrawTramCatenary(const TileInfo *ti, RoadBits tram)
+void DrawRoadCatenary(const TileInfo *ti, RoadBits tram)
 {
 	/* Do not draw catenary if it is invisible */
 	if (IsInvisibilitySet(TO_CATENARY)) return;
@@ -1298,7 +1298,7 @@ static void DrawRoadBits(TileInfo *ti)
 		return;
 	}
 
-	if (tram != ROAD_NONE) DrawTramCatenary(ti, tram);
+	if (tram != ROAD_NONE) DrawRoadCatenary(ti, tram);
 
 	/* Return if full detail is disabled, or we are zoomed fully out. */
 	if (!HasBit(_display_opt, DO_FULL_DETAIL) || _cur_dpi->zoom > ZOOM_LVL_DETAIL) return;
@@ -1388,9 +1388,9 @@ static void DrawTile_Road(TileInfo *ti)
 
 			if (HasTileRoadType(ti->tile, ROADTYPE_TRAM)) {
 				DrawGroundSprite(SPR_TRAMWAY_OVERLAY + (GetCrossingRoadAxis(ti->tile) ^ 1), pal);
-				DrawTramCatenary(ti, GetCrossingRoadBits(ti->tile));
+				DrawRoadCatenary(ti, GetCrossingRoadBits(ti->tile));
 			}
-			if (HasCatenaryDrawn(GetRailType(ti->tile))) DrawCatenary(ti);
+			if (HasRailCatenaryDrawn(GetRailType(ti->tile))) DrawRailCatenary(ti);
 			break;
 		}
 
@@ -1522,7 +1522,7 @@ static void TileLoop_Road(TileIndex tile)
 			grp = GetTownRadiusGroup(t, tile);
 
 			/* Show an animation to indicate road work */
-			if (t->road_build_months != 0 &&
+			if ((t->road_build_months != 0 || Chance16(_settings_game.economy.random_road_reconstruction, 1000)) &&
 					(DistanceManhattan(t->xy, tile) < 8 || grp != HZB_TOWN_EDGE) &&
 					IsNormalRoad(tile) && !HasAtMostOneBit(GetAllRoadBits(tile))) {
 				if (GetFoundationSlope(tile) == SLOPE_FLAT && EnsureNoVehicleOnGround(tile).Succeeded() && Chance16(1, 40)) {
@@ -1692,6 +1692,7 @@ static void GetTileDesc_Road(TileIndex tile, TileDesc *td)
 			if (HasBit(rts, ROADTYPE_TRAM)) tram_owner = GetRoadOwner(tile, ROADTYPE_TRAM);
 
 			const RailtypeInfo *rti = GetRailTypeInfo(GetRailType(tile));
+			td->railtype = rti->strings.name;
 			td->rail_speed = rti->max_speed;
 
 			break;
@@ -1751,6 +1752,7 @@ static VehicleEnterTileStatus VehicleEnter_Road(Vehicle *v, TileIndex tile, int 
 			RoadVehicle *rv = RoadVehicle::From(v);
 			if (rv->frame == RVC_DEPOT_STOP_FRAME &&
 					_roadveh_enter_depot_dir[GetRoadDepotDirection(tile)] == rv->state) {
+				rv->cur_image_valid_dir = INVALID_DIR;
 				rv->state = RVSB_IN_DEPOT;
 				rv->vehstatus |= VS_HIDDEN;
 				rv->direction = ReverseDir(rv->direction);

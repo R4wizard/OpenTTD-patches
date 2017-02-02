@@ -28,9 +28,9 @@ INSTANTIATE_POOL_METHODS(LinkGraphJob)
  */
 /* static */ Path *Path::invalid_path = new Path(INVALID_NODE, true);
 
-static DateTicks GetLinkGraphJobJoinDateTicks()
+static DateTicks GetLinkGraphJobJoinDateTicks(uint duration_multiplier)
 {
-	DateTicks ticks = _settings_game.linkgraph.recalc_time * DAY_TICKS;
+	DateTicks ticks = _settings_game.linkgraph.recalc_time * DAY_TICKS * duration_multiplier;
 	if (_settings_game.linkgraph.recalc_not_scaled_by_daylength) {
 		ticks /= _settings_game.economy.day_length_factor;
 	}
@@ -43,15 +43,15 @@ static DateTicks GetLinkGraphJobJoinDateTicks()
  * original. The job is immediately started.
  * @param orig Original LinkGraph to be copied.
  */
-LinkGraphJob::LinkGraphJob(const LinkGraph &orig) :
+LinkGraphJob::LinkGraphJob(const LinkGraph &orig, uint duration_multiplier) :
 		/* Copying the link graph here also copies its index member.
 		 * This is on purpose. */
 		link_graph(orig),
 		settings(_settings_game.linkgraph),
-		thread(NULL),
-		join_date_ticks(GetLinkGraphJobJoinDateTicks()),
+		join_date_ticks(GetLinkGraphJobJoinDateTicks(duration_multiplier)),
 		start_date_ticks((_date * DAY_TICKS) + _date_fract),
-		job_completed(false)
+		job_completed(false),
+		abort_job(false)
 {
 }
 
@@ -66,23 +66,9 @@ void LinkGraphJob::EraseFlows(NodeID from)
 	}
 }
 
-/**
- * Spawn a thread if possible and run the link graph job in the thread. If
- * that's not possible run the job right now in the current thread.
- */
-void LinkGraphJob::SpawnThread()
+void LinkGraphJob::SetJobGroup(std::shared_ptr<LinkGraphJobGroup> group)
 {
-	if (!ThreadObject::New(&(LinkGraphSchedule::Run), this, &this->thread, "ottd:linkgraph")) {
-		this->thread = NULL;
-		/* Of course this will hang a bit.
-		 * On the other hand, if you want to play games which make this hang noticably
-		 * on a platform without threads then you'll probably get other problems first.
-		 * OK:
-		 * If someone comes and tells me that this hangs for him/her, I'll implement a
-		 * smaller grained "Step" method for all handlers and add some more ticks where
-		 * "Step" is called. No problem in principle. */
-		LinkGraphSchedule::Run(this);
-	}
+	this->group = std::move(group);
 }
 
 /**
@@ -90,23 +76,26 @@ void LinkGraphJob::SpawnThread()
  */
 void LinkGraphJob::JoinThread()
 {
-	if (this->thread != NULL) {
-		this->thread->Join();
-		delete this->thread;
-		this->thread = NULL;
+	if (this->group != nullptr) {
+		this->group->JoinThread();
+		this->group.reset();
 	}
 }
 
 /**
- * Join the link graph job and destroy it.
+ * Join the link graph job thread, if not already joined.
  */
 LinkGraphJob::~LinkGraphJob()
 {
 	this->JoinThread();
+}
 
-	/* Don't update stuff from other pools, when everything is being removed.
-	 * Accessing other pools may be invalid. */
-	if (CleaningPool()) return;
+/**
+ * Join the link graph job thread, then merge/apply it.
+ */
+void LinkGraphJob::FinaliseJob()
+{
+	this->JoinThread();
 
 	/* Link graph has been merged into another one. */
 	if (!LinkGraph::IsValidID(this->link_graph.index)) return;
@@ -189,10 +178,45 @@ LinkGraphJob::~LinkGraphJob()
  */
 bool LinkGraphJob::IsJobCompleted() const
 {
-#if defined(__GNUC__) && (__GNUC__ > 4 || (__GNUC__ == 4 && __GNUC_MINOR__ >= 7))
+#if defined(__GNUC__) || defined(__clang__)
 	return __atomic_load_n(&job_completed, __ATOMIC_RELAXED);
 #else
 	return job_completed;
+#endif
+}
+
+/**
+ * Check if job has been requested to be aborted.
+ * This is allowed to spuriously return a falsely negative value.
+ * @return True if job abort has been requested.
+ */
+bool LinkGraphJob::IsJobAborted() const
+{
+#if defined(__GNUC__) || defined(__clang__)
+	return __atomic_load_n(&abort_job, __ATOMIC_RELAXED);
+#else
+	return abort_job;
+#endif
+}
+
+/**
+ * Abort job.
+ * The job may exit early at the next available opportunity.
+ * After this method has been called the state of the job is undefined, and the only valid operation
+ * is to join the thread and discard the job data.
+ */
+void LinkGraphJob::AbortJob()
+{
+	/*
+	 * Note that this it not guaranteed to be an atomic write and there are no memory barriers or other protections.
+	 * Readers of this variable in another thread may see an out of date value.
+	 * However this is OK as if this method is called the state of the job/thread does not matter anyway.
+	 */
+
+#if defined(__GNUC__) || defined(__clang__)
+	__atomic_store_n(&(abort_job), true, __ATOMIC_RELAXED);
+#else
+	abort_job = true;
 #endif
 }
 

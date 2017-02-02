@@ -664,8 +664,11 @@ struct RefitWindow : public Window {
 	{
 		if (this->window_number != INVALID_VEHICLE) {
 			if (!FocusWindowById(WC_VEHICLE_VIEW, this->window_number)) {
-				if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-				MarkAllRouteStepsDirty(this);
+				if (this->window_number != INVALID_VEHICLE) {
+					const Vehicle *v = Vehicle::Get(this->window_number);
+					MarkAllRoutePathsDirty(v);
+					MarkAllRouteStepsDirty(v);
+				}
 			}
 		}
 	}
@@ -673,16 +676,22 @@ struct RefitWindow : public Window {
 	virtual void OnFocus(Window *previously_focused_window)
 	{
 		if (HasFocusedVehicleChanged(this->window_number, previously_focused_window)) {
-			if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-			MarkAllRouteStepsDirty(this);
+			if (this->window_number != INVALID_VEHICLE) {
+				const Vehicle *v = Vehicle::Get(this->window_number);
+				MarkAllRoutePathsDirty(v);
+				MarkAllRouteStepsDirty(v);
+			}
 		}
 	}
 
 	virtual void OnFocusLost(Window *newly_focused_window)
 	{
 		if (HasFocusedVehicleChanged(this->window_number, newly_focused_window)) {
-			if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-			MarkAllRouteStepsDirty(this);
+			if (this->window_number != INVALID_VEHICLE) {
+				const Vehicle *v = Vehicle::Get(this->window_number);
+				MarkAllRoutePathsDirty(v);
+				MarkAllRouteStepsDirty(v);
+			}
 		}
 	}
 
@@ -1553,9 +1562,9 @@ private:
 
 	StringID GetChangeOrderStringID() const
 	{
-		if (VehicleListIdentifier(this->window_number).type == VL_STATION_LIST) {
+		if (VehicleListIdentifier::UnPack(this->window_number).type == VL_STATION_LIST) {
 			return (Station::Get(this->vli.index)->facilities & FACIL_WAYPOINT) ? STR_VEHICLE_LIST_CHANGE_ORDER_WAYPOINT : STR_VEHICLE_LIST_CHANGE_ORDER_STATION;
-		} else if (VehicleListIdentifier(this->window_number).type == VL_DEPOT_LIST) {
+		} else if (VehicleListIdentifier::UnPack(this->window_number).type == VL_DEPOT_LIST) {
 			return STR_VEHICLE_LIST_CHANGE_ORDER_TRAIN_DEPOT + this->vli.vtype;
 		} else {
 			return 0;
@@ -1758,7 +1767,7 @@ public:
 				break;
 
 			case WID_VL_MANAGE_VEHICLES_DROPDOWN: {
-				DropDownList *list = this->BuildActionDropdownList(VehicleListIdentifier(this->window_number).type == VL_STANDARD, false,
+				DropDownList *list = this->BuildActionDropdownList(VehicleListIdentifier::UnPack(this->window_number).type == VL_STANDARD, false,
 						this->vli.vtype == VEH_TRAIN, this->GetChangeOrderStringID(), true);
 				ShowDropDownList(this, list, 0, WID_VL_MANAGE_VEHICLES_DROPDOWN);
 				break;
@@ -2049,6 +2058,7 @@ struct VehicleDetailsWindow : Window {
 	TrainDetailsWindowTabs tab; ///< For train vehicles: which tab is displayed.
 	Scrollbar *vscroll;
 	bool vehicle_group_line_shown;
+	bool vehicle_weight_ratio_line_shown;
 
 	/** Initialize a newly created vehicle details window */
 	VehicleDetailsWindow(WindowDesc *desc, WindowNumber window_number) : Window(desc)
@@ -2069,8 +2079,11 @@ struct VehicleDetailsWindow : Window {
 	{
 		if (this->window_number != INVALID_VEHICLE) {
 			if (!FocusWindowById(WC_VEHICLE_VIEW, this->window_number)) {
-				if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-				MarkAllRouteStepsDirty(this);
+				if (this->window_number != INVALID_VEHICLE) {
+					const Vehicle *v = Vehicle::Get(this->window_number);
+					MarkAllRoutePathsDirty(v);
+					MarkAllRouteStepsDirty(v);
+				}
 			}
 		}
 	}
@@ -2130,6 +2143,11 @@ struct VehicleDetailsWindow : Window {
 		return (_settings_client.gui.show_vehicle_group_in_details && v->group_id != INVALID_GROUP && v->group_id != DEFAULT_GROUP);
 	}
 
+	bool ShouldShowWeightRatioLine(const Vehicle *v) const
+	{
+		return (v->type == VEH_TRAIN && _settings_client.gui.show_train_weight_ratios_in_details);
+	}
+
 	virtual void UpdateWidgetSize(int widget, Dimension *size, const Dimension &padding, Dimension *fill, Dimension *resize)
 	{
 		switch (widget) {
@@ -2137,7 +2155,11 @@ struct VehicleDetailsWindow : Window {
 				const Vehicle *v = Vehicle::Get(this->window_number);
 				Dimension dim = { 0, 0 };
 				this->vehicle_group_line_shown = ShouldShowGroupLine(v);
-				size->height = WD_FRAMERECT_TOP + (this->vehicle_group_line_shown ? 5 : 4) * FONT_HEIGHT_NORMAL + WD_FRAMERECT_BOTTOM;
+				this->vehicle_weight_ratio_line_shown = ShouldShowWeightRatioLine(v);
+				int lines = 4;
+				if (this->vehicle_group_line_shown) lines++;
+				if (this->vehicle_weight_ratio_line_shown) lines++;
+				size->height = WD_FRAMERECT_TOP + lines * FONT_HEIGHT_NORMAL + WD_FRAMERECT_BOTTOM;
 
 				for (uint i = 0; i < 5; i++) SetDParamMaxValue(i, INT16_MAX);
 				static const StringID info_strings[] = {
@@ -2164,6 +2186,11 @@ struct VehicleDetailsWindow : Window {
 				if (this->vehicle_group_line_shown) {
 					SetDParam(0, v->group_id);
 					dim = maxdim(dim, GetStringBoundingBox(STR_VEHICLE_INFO_GROUP));
+				}
+				if (this->vehicle_weight_ratio_line_shown) {
+					SetDParamMaxValue(0, 1 << 16);
+					SetDParamMaxValue(1, 1 << 16);
+					dim = maxdim(dim, GetStringBoundingBox(STR_VEHICLE_INFO_WEIGHT_RATIOS));
 				}
 				SetDParam(0, STR_VEHICLE_INFO_AGE);
 				dim = maxdim(dim, GetStringBoundingBox(STR_VEHICLE_INFO_AGE_RUNNING_COST_YR));
@@ -2299,6 +2326,14 @@ struct VehicleDetailsWindow : Window {
 				DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, string);
 				y += FONT_HEIGHT_NORMAL;
 
+				bool should_show_weight_ratio = this->ShouldShowWeightRatioLine(v);
+				if (should_show_weight_ratio) {
+					SetDParam(0, (100 * Train::From(v)->gcache.cached_power) / max<uint>(1, Train::From(v)->gcache.cached_weight));
+					SetDParam(1, (Train::From(v)->gcache.cached_max_te / 10) / max<uint>(1, Train::From(v)->gcache.cached_weight));
+					DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, STR_VEHICLE_INFO_WEIGHT_RATIOS);
+					y += FONT_HEIGHT_NORMAL;
+				}
+
 				/* Draw profit */
 				if (v->type == VEH_TRAIN && _settings_client.gui.show_train_length_in_details) {
 					const GroundVehicleCache *gcache = v->GetGroundVehicleCache();
@@ -2347,7 +2382,7 @@ struct VehicleDetailsWindow : Window {
 					SetDParam(0, v->group_id);
 					DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, STR_VEHICLE_INFO_GROUP);
 				}
-				if (this->vehicle_group_line_shown != should_show_group) {
+				if (this->vehicle_group_line_shown != should_show_group || this->vehicle_weight_ratio_line_shown != should_show_weight_ratio) {
 					const_cast<VehicleDetailsWindow *>(this)->ReInit();
 				}
 				break;
@@ -2361,9 +2396,7 @@ struct VehicleDetailsWindow : Window {
 			case WID_VD_MIDDLE_DETAILS: {
 				/* For other vehicles, at the place of the matrix. */
 				bool rtl = _current_text_dir == TD_RTL;
-				uint sprite_width = UnScaleGUI(
-						max<uint>(GetSprite(v->GetImage(rtl ? DIR_E : DIR_W, EIT_IN_DETAILS), ST_NORMAL)->width, 70U)) +
-						WD_FRAMERECT_LEFT + WD_FRAMERECT_RIGHT;
+				uint sprite_width = GetSingleVehicleWidth(v, EIT_IN_DETAILS) + WD_FRAMERECT_LEFT + WD_FRAMERECT_RIGHT;
 
 				uint text_left  = r.left  + (rtl ? 0 : sprite_width);
 				uint text_right = r.right - (rtl ? sprite_width : 0);
@@ -2497,16 +2530,22 @@ struct VehicleDetailsWindow : Window {
 	virtual void OnFocus(Window *previously_focused_window)
 	{
 		if (HasFocusedVehicleChanged(this->window_number, previously_focused_window)) {
-			if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-			MarkAllRouteStepsDirty(this);
+			if (this->window_number != INVALID_VEHICLE) {
+				const Vehicle *v = Vehicle::Get(this->window_number);
+				MarkAllRoutePathsDirty(v);
+				MarkAllRouteStepsDirty(v);
+			}
 		}
 	}
 
 	virtual void OnFocusLost(Window *newly_focused_window)
 	{
 		if (HasFocusedVehicleChanged(this->window_number, newly_focused_window)) {
-			if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-			MarkAllRouteStepsDirty(this);
+			if (this->window_number != INVALID_VEHICLE) {
+				const Vehicle *v = Vehicle::Get(this->window_number);
+				MarkAllRoutePathsDirty(v);
+				MarkAllRouteStepsDirty(v);
+			}
 		}
 	}
 };
@@ -2557,7 +2596,7 @@ static const NWidgetPart _nested_vehicle_view_widgets[] = {
 		NWidget(NWID_VERTICAL),
 			NWidget(WWT_PUSHIMGBTN, COLOUR_GREY, WID_VV_CENTER_MAIN_VIEW), SetMinimalSize(18, 18), SetDataTip(SPR_CENTRE_VIEW_VEHICLE, 0x0 /* filled later */),
 			NWidget(NWID_SELECTION, INVALID_COLOUR, WID_VV_SELECT_DEPOT_CLONE),
-				NWidget(WWT_PUSHIMGBTN, COLOUR_GREY, WID_VV_GOTO_DEPOT), SetMinimalSize(18, 18), SetDataTip(0x0 /* filled later */, 0x0 /* filled later */),
+				NWidget(WWT_IMGBTN, COLOUR_GREY, WID_VV_GOTO_DEPOT), SetMinimalSize(18, 18), SetDataTip(0x0 /* filled later */, 0x0 /* filled later */),
 				NWidget(WWT_PUSHIMGBTN, COLOUR_GREY, WID_VV_CLONE), SetMinimalSize(18, 18), SetDataTip(0x0 /* filled later */, 0x0 /* filled later */),
 			EndContainer(),
 			/* For trains only, 'ignore signal' button. */
@@ -2649,8 +2688,8 @@ static const uint32 _vehicle_command_translation_table[][4] = {
 };
 
 /**
- * This is the Callback method after the cloning attempt of a vehicle
- * @param result the result of the cloning command
+ * This is the Callback method after attempting to start/stop a vehicle
+ * @param result the result of the start/stop command
  * @param tile unused
  * @param p1 vehicle ID
  * @param p2 unused
@@ -2700,6 +2739,9 @@ static bool IsVehicleRefitable(const Vehicle *v)
 /** Window manager class for viewing a vehicle. */
 struct VehicleViewWindow : Window {
 private:
+	bool depot_select_active = false;
+	bool depot_select_ctrl_pressed = false;
+
 	/** Display planes available in the vehicle view window. */
 	enum PlaneSelections {
 		SEL_DC_GOTO_DEPOT,  ///< Display 'goto depot' button in #WID_VV_SELECT_DEPOT_CLONE stacked widget.
@@ -2780,7 +2822,6 @@ public:
 		this->GetWidget<NWidgetCore>(WID_VV_START_STOP)->tool_tip       = STR_VEHICLE_VIEW_TRAIN_STATE_START_STOP_TOOLTIP + v->type;
 		this->GetWidget<NWidgetCore>(WID_VV_CENTER_MAIN_VIEW)->tool_tip = STR_VEHICLE_VIEW_TRAIN_LOCATION_TOOLTIP + v->type;
 		this->GetWidget<NWidgetCore>(WID_VV_REFIT)->tool_tip            = STR_VEHICLE_VIEW_TRAIN_REFIT_TOOLTIP + v->type;
-		this->GetWidget<NWidgetCore>(WID_VV_GOTO_DEPOT)->tool_tip       = STR_VEHICLE_VIEW_TRAIN_SEND_TO_DEPOT_TOOLTIP + v->type;
 		this->GetWidget<NWidgetCore>(WID_VV_SHOW_ORDERS)->tool_tip      = STR_VEHICLE_VIEW_TRAIN_ORDERS_TOOLTIP + v->type;
 		this->GetWidget<NWidgetCore>(WID_VV_SHOW_DETAILS)->tool_tip     = STR_VEHICLE_VIEW_TRAIN_SHOW_DETAILS_TOOLTIP + v->type;
 		this->GetWidget<NWidgetCore>(WID_VV_CLONE)->tool_tip            = STR_VEHICLE_VIEW_CLONE_TRAIN_INFO + v->type;
@@ -2788,8 +2829,11 @@ public:
 
 	~VehicleViewWindow()
 	{
-		if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-		MarkAllRouteStepsDirty(this);
+		if (this->window_number != INVALID_VEHICLE) {
+			const Vehicle *v = Vehicle::Get(this->window_number);
+			MarkAllRoutePathsDirty(v);
+			MarkAllRouteStepsDirty(v);
+		}
 		DeleteWindowById(WC_VEHICLE_ORDERS, this->window_number, false);
 		DeleteWindowById(WC_VEHICLE_REFIT, this->window_number, false);
 		DeleteWindowById(WC_VEHICLE_DETAILS, this->window_number, false);
@@ -2799,16 +2843,22 @@ public:
 	virtual void OnFocus(Window *previously_focused_window)
 	{
 		if (HasFocusedVehicleChanged(this->window_number, previously_focused_window)) {
-			if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-			MarkAllRouteStepsDirty(this);
+			if (this->window_number != INVALID_VEHICLE) {
+				const Vehicle *v = Vehicle::Get(this->window_number);
+				MarkAllRoutePathsDirty(v);
+				MarkAllRouteStepsDirty(v);
+			}
 		}
 	}
 
 	virtual void OnFocusLost(Window *newly_focused_window)
 	{
 		if (HasFocusedVehicleChanged(this->window_number, newly_focused_window)) {
-			if (this->window_number != INVALID_VEHICLE) MarkAllRoutePathsDirty(Vehicle::Get(this->window_number));
-			MarkAllRouteStepsDirty(this);
+			if (this->window_number != INVALID_VEHICLE) {
+				const Vehicle *v = Vehicle::Get(this->window_number);
+				MarkAllRoutePathsDirty(v);
+				MarkAllRouteStepsDirty(v);
+			}
 		}
 	}
 
@@ -3020,7 +3070,15 @@ public:
 			}
 
 			case WID_VV_GOTO_DEPOT: // goto hangar
-				DoCommandP(v->tile, v->index | (_ctrl_pressed ? DEPOT_SERVICE : 0U), 0, GetCmdSendToDepot(v));
+				if (_shift_pressed) {
+					if (HandlePlacePushButton(this, WID_VV_GOTO_DEPOT, ANIMCURSOR_PICKSTATION, HT_RECT)) {
+						this->depot_select_ctrl_pressed = _ctrl_pressed;
+						this->depot_select_active = true;
+					}
+				} else {
+					this->HandleButtonClick(WID_VV_GOTO_DEPOT);
+					DoCommandP(v->tile, v->index | (_ctrl_pressed ? DEPOT_SERVICE : 0U), 0, GetCmdSendToDepot(v));
+				}
 				break;
 			case WID_VV_REFIT: // refit
 				ShowVehicleRefitWindow(v, INVALID_VEH_ORDER_ID, this);
@@ -3053,6 +3111,48 @@ public:
 				assert(v->type == VEH_TRAIN);
 				DoCommandP(v->tile, v->index, 0, CMD_FORCE_TRAIN_PROCEED | CMD_MSG(STR_ERROR_CAN_T_MAKE_TRAIN_PASS_SIGNAL));
 				break;
+		}
+	}
+
+	virtual void OnTimeout()
+	{
+		if (!this->depot_select_active) {
+			this->RaiseWidget(WID_VV_GOTO_DEPOT);
+			this->SetWidgetDirty(WID_VV_GOTO_DEPOT);
+		}
+	}
+
+	virtual void OnPlaceObject(Point pt, TileIndex tile)
+	{
+		const Vehicle *v = Vehicle::Get(this->window_number);
+		if (IsDepotTile(tile) && GetDepotVehicleType(tile) == v->type && IsInfraTileUsageAllowed(v->type, v->owner, tile)) {
+			DoCommandP(v->tile, v->index | (this->depot_select_ctrl_pressed ? DEPOT_SERVICE : 0U) | DEPOT_SPECIFIC, tile, GetCmdSendToDepot(v));
+			ResetObjectToPlace();
+			this->RaiseButtons();
+		}
+	}
+
+	virtual void OnPlaceObjectAbort()
+	{
+		this->depot_select_active = false;
+		this->RaiseWidget(WID_VV_GOTO_DEPOT);
+		this->SetWidgetDirty(WID_VV_GOTO_DEPOT);
+	}
+
+	virtual bool OnRightClick(Point pt, int widget)
+	{
+		if (widget == WID_VV_GOTO_DEPOT && _settings_client.gui.hover_delay_ms == 0) {
+			uint64 arg = STR_VEHICLE_VIEW_TRAIN_SEND_TO_DEPOT_TOOLTIP + Vehicle::Get(this->window_number)->type;
+			GuiShowTooltips(this, STR_VEHICLE_VIEW_SEND_TO_DEPOT_TOOLTIP_SHIFT, 1, &arg, TCC_RIGHT_CLICK);
+		}
+		return false;
+	}
+
+	virtual void OnHover(Point pt, int widget)
+	{
+		if (widget == WID_VV_GOTO_DEPOT) {
+			uint64 arg = STR_VEHICLE_VIEW_TRAIN_SEND_TO_DEPOT_TOOLTIP + Vehicle::Get(this->window_number)->type;
+			GuiShowTooltips(this, STR_VEHICLE_VIEW_SEND_TO_DEPOT_TOOLTIP_SHIFT, 1, &arg, TCC_HOVER);
 		}
 	}
 
@@ -3163,35 +3263,84 @@ void CcBuildPrimaryVehicle(const CommandCost &result, TileIndex tile, uint32 p1,
 }
 
 /**
+ * Get the width of a vehicle (part) in pixels.
+ * @param v Vehicle to get the width for.
+ * @return Width of the vehicle.
+ */
+int GetSingleVehicleWidth(const Vehicle *v, EngineImageType image_type)
+{
+	switch (v->type) {
+		case VEH_TRAIN:
+			return Train::From(v)->GetDisplayImageWidth();
+
+		case VEH_ROAD:
+			return RoadVehicle::From(v)->GetDisplayImageWidth();
+
+		default:
+			bool rtl = _current_text_dir == TD_RTL;
+			VehicleSpriteSeq seq;
+			v->GetImage(rtl ? DIR_E : DIR_W, image_type, &seq);
+			Rect rec;
+			seq.GetBounds(&rec);
+			return UnScaleGUI(rec.right - rec.left + 1);
+	}
+}
+
+/**
  * Get the width of a vehicle (including all parts of the consist) in pixels.
  * @param v Vehicle to get the width for.
  * @return Width of the vehicle.
  */
-int GetVehicleWidth(Vehicle *v, EngineImageType image_type)
+int GetVehicleWidth(const Vehicle *v, EngineImageType image_type)
 {
-	int vehicle_width = 0;
+	if (v->type == VEH_TRAIN || v->type == VEH_ROAD) {
+		int vehicle_width = 0;
+		for (const Vehicle *u = v; u != NULL; u = u->Next()) {
+			vehicle_width += GetSingleVehicleWidth(u, image_type);
+		}
+		return vehicle_width;
+	} else {
+		return GetSingleVehicleWidth(v, image_type);
+	}
+}
 
-	switch (v->type) {
-		case VEH_TRAIN:
-			for (const Train *u = Train::From(v); u != NULL; u = u->Next()) {
-				vehicle_width += u->GetDisplayImageWidth();
-			}
-			break;
+/**
+ * Set the mouse cursor to look like a vehicle.
+ * @param v Vehicle
+ * @param image_type Type of vehicle image to use.
+ */
+void SetMouseCursorVehicle(const Vehicle *v, EngineImageType image_type)
+{
+	bool rtl = _current_text_dir == TD_RTL;
 
-		case VEH_ROAD:
-			for (const RoadVehicle *u = RoadVehicle::From(v); u != NULL; u = u->Next()) {
-				vehicle_width += u->GetDisplayImageWidth();
-			}
-			break;
+	_cursor.sprite_count = 0;
+	int total_width = 0;
+	for (; v != NULL; v = v->HasArticulatedPart() ? v->GetNextArticulatedPart() : NULL) {
+		if (total_width >= 2 * (int)VEHICLEINFO_FULL_VEHICLE_WIDTH) break;
 
-		default:
-			bool rtl = _current_text_dir == TD_RTL;
-			SpriteID sprite = v->GetImage(rtl ? DIR_E : DIR_W, image_type);
-			const Sprite *real_sprite = GetSprite(sprite, ST_NORMAL);
-			vehicle_width = UnScaleGUI(real_sprite->width);
+		PaletteID pal = (v->vehstatus & VS_CRASHED) ? PALETTE_CRASH : GetVehiclePalette(v);
+		VehicleSpriteSeq seq;
+		v->GetImage(rtl ? DIR_E : DIR_W, image_type, &seq);
 
-			break;
+		if (_cursor.sprite_count + seq.count > lengthof(_cursor.sprite_seq)) break;
+
+		for (uint i = 0; i < seq.count; ++i) {
+			PaletteID pal2 = (v->vehstatus & VS_CRASHED) || !seq.seq[i].pal ? pal : seq.seq[i].pal;
+			_cursor.sprite_seq[_cursor.sprite_count].sprite = seq.seq[i].sprite;
+			_cursor.sprite_seq[_cursor.sprite_count].pal = pal2;
+			_cursor.sprite_pos[_cursor.sprite_count].x = rtl ? -total_width : total_width;
+			_cursor.sprite_pos[_cursor.sprite_count].y = 0;
+			_cursor.sprite_count++;
+		}
+
+		total_width += GetSingleVehicleWidth(v, image_type);
 	}
 
-	return vehicle_width;
+	int offs = ((int)VEHICLEINFO_FULL_VEHICLE_WIDTH - total_width) / 2;
+	if (rtl) offs = -offs;
+	for (uint i = 0; i < _cursor.sprite_count; ++i) {
+		_cursor.sprite_pos[i].x += offs;
+	}
+
+	UpdateCursorSize();
 }

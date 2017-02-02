@@ -90,7 +90,7 @@ public:
 	uint32 max_te;
 
 	byte spritenum;
-	SpriteID cur_image;
+	VehicleSpriteSeq sprite_seq;        ///< Vehicle appearance.
 	uint32 image_width;
 
 	TemplateVehicle(VehicleType type = VEH_INVALID, EngineID e = INVALID_ENGINE, byte B = 0, Owner = _local_company);
@@ -105,6 +105,7 @@ public:
 		this->reuse_depot_vehicles = true;
 		this->keep_remaining_vehicles = true;
 		this->refit_as_template = true;
+		this->sprite_seq.count = 1;
 	}
 
 	~TemplateVehicle();
@@ -155,15 +156,7 @@ public:
 
 	short NumGroupsUsingTemplate() const;
 
-	short CountEnginesInChain();
-
 };
-
-void appendTemplateVehicle(TemplateVehicle*, TemplateVehicle*);
-void insertTemplateVehicle(TemplateVehicle*, TemplateVehicle*, TemplateVehicle*);
-
-void NeutralizeVehicleStatus(Train*);
-void SplitVehicleRemainders(Train*);
 
 // TemplateReplacement stuff
 
@@ -199,9 +192,8 @@ struct TemplateReplacement : TemplateReplacementPool::PoolItem<&_template_replac
 };
 
 TemplateReplacement* GetTemplateReplacementByGroupID(GroupID);
-TemplateReplacement* GetTemplateReplacementByTemplateID(TemplateID);
 bool IssueTemplateReplacement(GroupID, TemplateID);
 
-short deleteIllegalTemplateReplacements(GroupID);
+short DeleteTemplateReplacementsByGroupID(GroupID);
 
 #endif /* TEMPLATE_VEH_H */

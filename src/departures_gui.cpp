@@ -47,7 +47,7 @@ static const NWidgetPart _nested_departures_list[] = {
 	EndContainer(),
 
 	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_MATRIX, COLOUR_GREY, WID_DB_LIST), SetMinimalSize(0, 0), SetFill(1, 0), SetResize(1, 1),
+		NWidget(WWT_MATRIX, COLOUR_GREY, WID_DB_LIST), SetMinimalSize(0, 0), SetFill(1, 0), SetResize(1, 1), SetScrollbar(WID_DB_SCROLLBAR),
 		NWidget(NWID_VSCROLLBAR, COLOUR_GREY, WID_DB_SCROLLBAR),
 	EndContainer(),
 
@@ -407,7 +407,7 @@ uint DeparturesWindow<Twaypoint>::GetMinWidth() const
 			VehicleList vehicles;
 
 			/* MAX_COMPANIES is probably the wrong thing to put here, but it works. GenerateVehicleSortList doesn't check the company when the type of list is VL_STATION_LIST (r20801). */
-			if (!GenerateVehicleSortList(&vehicles, VehicleListIdentifier(VL_STATION_LIST, (VehicleType)(VEH_TRAIN + i), MAX_COMPANIES, station).Pack())) {
+			if (!GenerateVehicleSortList(&vehicles, VehicleListIdentifier(VL_STATION_LIST, (VehicleType)(VEH_TRAIN + i), MAX_COMPANIES, station))) {
 				/* Something went wrong: panic! */
 				continue;
 			}
@@ -540,7 +540,7 @@ void DeparturesWindow<Twaypoint>::DrawDeparturesListItems(const Rect &r) const
 			VehicleList vehicles;
 
 			/* MAX_COMPANIES is probably the wrong thing to put here, but it works. GenerateVehicleSortList doesn't check the company when the type of list is VL_STATION_LIST (r20801). */
-			if (!GenerateVehicleSortList(&vehicles, VehicleListIdentifier(VL_STATION_LIST, (VehicleType)(VEH_TRAIN + i), MAX_COMPANIES, station).Pack())) {
+			if (!GenerateVehicleSortList(&vehicles, VehicleListIdentifier(VL_STATION_LIST, (VehicleType)(VEH_TRAIN + i), MAX_COMPANIES, station))) {
 				/* Something went wrong: panic! */
 				continue;
 			}
@@ -566,7 +566,7 @@ void DeparturesWindow<Twaypoint>::DrawDeparturesListItems(const Rect &r) const
 	uint departure = 0;
 	uint arrival = 0;
 
-	DateTicksScaled now_date = CURRENT_SCALED_TICKS;
+	DateTicksScaled now_date = _scaled_date_ticks;
 	DateTicksScaled max_date = now_date + (_settings_client.gui.max_departure_time * DAY_TICKS * _settings_game.economy.day_length_factor);
 
 	/* Draw each departure. */

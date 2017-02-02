@@ -62,6 +62,7 @@
 #include "saveload_internal.h"
 
 #include <signal.h>
+#include <algorithm>
 
 #include "../safeguards.h"
 
@@ -250,7 +251,7 @@ static void InitializeWindowsAndCaches()
 		/* For each company, verify (while loading a scenario) that the inauguration date is the current year and set it
 		 * accordingly if it is not the case.  No need to set it on companies that are not been used already,
 		 * thus the MIN_YEAR (which is really nothing more than Zero, initialized value) test */
-		if (_file_to_saveload.filetype == FT_SCENARIO && c->inaugurated_year != MIN_YEAR) {
+		if (_file_to_saveload.abstract_ftype == FT_SCENARIO && c->inaugurated_year != MIN_YEAR) {
 			c->inaugurated_year = _cur_year;
 		}
 	}
@@ -304,12 +305,20 @@ static void InitializeWindowsAndCaches()
 	BuildOwnerLegend();
 }
 
+#ifdef WITH_SIGACTION
+static struct sigaction _prev_segfault;
+static struct sigaction _prev_abort;
+static struct sigaction _prev_fpe;
+
+static void CDECL HandleSavegameLoadCrash(int signum, siginfo_t *si, void *context);
+#else
 typedef void (CDECL *SignalHandlerPointer)(int);
 static SignalHandlerPointer _prev_segfault = NULL;
 static SignalHandlerPointer _prev_abort    = NULL;
 static SignalHandlerPointer _prev_fpe      = NULL;
 
 static void CDECL HandleSavegameLoadCrash(int signum);
+#endif
 
 /**
  * Replaces signal handlers of SIGSEGV and SIGABRT
@@ -317,9 +326,20 @@ static void CDECL HandleSavegameLoadCrash(int signum);
  */
 static void SetSignalHandlers()
 {
+#ifdef WITH_SIGACTION
+	struct sigaction sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sa_flags = SA_SIGINFO | SA_RESTART;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_sigaction = HandleSavegameLoadCrash;
+	sigaction(SIGSEGV, &sa, &_prev_segfault);
+	sigaction(SIGABRT, &sa, &_prev_abort);
+	sigaction(SIGFPE,  &sa, &_prev_fpe);
+#else
 	_prev_segfault = signal(SIGSEGV, HandleSavegameLoadCrash);
 	_prev_abort    = signal(SIGABRT, HandleSavegameLoadCrash);
 	_prev_fpe      = signal(SIGFPE,  HandleSavegameLoadCrash);
+#endif
 }
 
 /**
@@ -327,9 +347,15 @@ static void SetSignalHandlers()
  */
 static void ResetSignalHandlers()
 {
+#ifdef WITH_SIGACTION
+	sigaction(SIGSEGV, &_prev_segfault, NULL);
+	sigaction(SIGABRT, &_prev_abort, NULL);
+	sigaction(SIGFPE,  &_prev_fpe, NULL);
+#else
 	signal(SIGSEGV, _prev_segfault);
 	signal(SIGABRT, _prev_abort);
 	signal(SIGFPE,  _prev_fpe);
+#endif
 }
 
 /**
@@ -369,7 +395,11 @@ bool SaveloadCrashWithMissingNewGRFs()
  * NewGRFs that are required by the savegame.
  * @param signum received signal
  */
+#ifdef WITH_SIGACTION
+static void CDECL HandleSavegameLoadCrash(int signum, siginfo_t *si, void *context)
+#else
 static void CDECL HandleSavegameLoadCrash(int signum)
+#endif
 {
 	ResetSignalHandlers();
 
@@ -416,14 +446,27 @@ static void CDECL HandleSavegameLoadCrash(int signum)
 
 	ShowInfo(buffer);
 
+#ifdef WITH_SIGACTION
+	struct sigaction call;
+#else
 	SignalHandlerPointer call = NULL;
+#endif
 	switch (signum) {
 		case SIGSEGV: call = _prev_segfault; break;
 		case SIGABRT: call = _prev_abort; break;
 		case SIGFPE:  call = _prev_fpe; break;
 		default: NOT_REACHED();
 	}
+#ifdef WITH_SIGACTION
+	if (call.sa_flags & SA_SIGINFO) {
+		if (call.sa_sigaction != NULL) call.sa_sigaction(signum, si, context);
+	} else {
+		if (call.sa_handler != NULL) call.sa_handler(signum);
+	}
+#else
 	if (call != NULL) call(signum);
+#endif
+
 }
 
 /**
@@ -1616,12 +1659,10 @@ bool AfterLoadGame()
 
 		Station *st;
 		FOR_ALL_STATIONS(st) {
-			std::list<Vehicle *>::iterator iter;
-			for (iter = st->loading_vehicles.begin(); iter != st->loading_vehicles.end();) {
-				Vehicle *v = *iter;
-				iter++;
-				if (!v->current_order.IsType(OT_LOADING)) st->loading_vehicles.remove(v);
-			}
+			st->loading_vehicles.erase(std::remove_if(st->loading_vehicles.begin(), st->loading_vehicles.end(),
+				[](Vehicle *v) {
+					return !v->current_order.IsType(OT_LOADING);
+				}), st->loading_vehicles.end());
 		}
 	}
 
@@ -2206,13 +2247,11 @@ bool AfterLoadGame()
 		 */
 		Station *st;
 		FOR_ALL_STATIONS(st) {
-			std::list<Vehicle *>::iterator iter;
-			for (iter = st->loading_vehicles.begin(); iter != st->loading_vehicles.end(); ++iter) {
+			for (Vehicle *v : st->loading_vehicles) {
 				/* There are always as many CargoPayments as Vehicles. We need to make the
 				 * assert() in Pool::GetNew() happy by calling CanAllocateItem(). */
 				assert_compile(CargoPaymentPool::MAX_SIZE == VehiclePool::MAX_SIZE);
 				assert(CargoPayment::CanAllocateItem());
-				Vehicle *v = *iter;
 				if (v->cargo_payment == NULL) v->cargo_payment = new CargoPayment(v);
 			}
 		}
@@ -2937,6 +2976,21 @@ bool AfterLoadGame()
 			}
 		}
 	}
+	if (!SlXvIsFeaturePresent(XSLFI_IMPROVED_BREAKDOWNS, 4)) {
+		Vehicle *v;
+		FOR_ALL_VEHICLES(v) {
+			switch(v->type) {
+				case VEH_AIRCRAFT:
+					if (v->breakdown_type == BREAKDOWN_AIRCRAFT_SPEED && v->breakdown_severity == 0) {
+						v->breakdown_severity = max(1, min(v->vcache.cached_max_speed >> 4, 255));
+					}
+					break;
+
+				default:
+					break;
+			}
+		}
+	}
 
 	/* The road owner of standard road stops was not properly accounted for. */
 	if (IsSavegameVersionBefore(172)) {
@@ -3113,6 +3167,12 @@ bool AfterLoadGame()
 			}
 		}
 	}
+	if (!SlXvIsFeaturePresent(XSLFI_TIMETABLES_START_TICKS, 2)) {
+		Vehicle *v;
+		FOR_ALL_VEHICLES(v) {
+			v->timetable_start_subticks = 0;
+		}
+	}
 
 	if (SlXvIsFeaturePresent(XSLFI_SPRINGPP, 1, 1)) {
 		/*
@@ -3185,10 +3245,25 @@ bool AfterLoadGame()
 		/* set the semaphore bit to match what it would have been in v1 */
 		/* clear the PBS bit, update the end signal state */
 		for (TileIndex t = 0; t < map_size; t++) {
-			if (IsTileType(t, MP_TUNNELBRIDGE) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && HasWormholeSignals(t)) {
+			if (IsTileType(t, MP_TUNNELBRIDGE) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && IsTunnelBridgeWithSignalSimulation(t)) {
 				SetTunnelBridgeSemaphore(t, _cur_year < _settings_client.gui.semaphore_build_before);
 				SetTunnelBridgePBS(t, false);
 				UpdateSignalsOnSegment(t, INVALID_DIAGDIR, GetTileOwner(t));
+			}
+		}
+	}
+	if (SlXvIsFeaturePresent(XSLFI_SIG_TUNNEL_BRIDGE, 1, 2)) {
+		/* red/green signal state bit for tunnel entrances moved
+		 * to no longer re-use signalled tunnel exit bit
+		 */
+		for (TileIndex t = 0; t < map_size; t++) {
+			if (IsTileType(t, MP_TUNNELBRIDGE) && GetTunnelBridgeTransportType(t) == TRANSPORT_RAIL && IsTunnelBridgeWithSignalSimulation(t)) {
+				if (HasBit(_m[t].m5, 5)) {
+					/* signalled tunnel entrance */
+					SignalState state = HasBit(_m[t].m5, 6) ? SIGNAL_STATE_RED : SIGNAL_STATE_GREEN;
+					ClrBit(_m[t].m5, 6);
+					SetTunnelBridgeSignalState(t, state);
+				}
 			}
 		}
 	}
@@ -3225,6 +3300,16 @@ bool AfterLoadGame()
 				ClrBit(_m[t].m1, 7);
 			}
 		}
+	}
+
+	if (SlXvIsFeaturePresent(XSLFI_AUTO_TIMETABLE, 1, 3)) {
+		Vehicle *v;
+		FOR_ALL_VEHICLES(v) SB(v->vehicle_flags, VF_TIMETABLE_SEPARATION, 1, _settings_game.order.old_timetable_separation);
+	}
+
+	/* Set lifetime vehicle profit to 0 if lifetime profit feature is missing */
+	if (!SlXvIsFeaturePresent(XSLFI_TOWN_CARGO_ADJ, 2)) {
+		_settings_game.economy.town_cargo_scale_factor = _settings_game.economy.old_town_cargo_factor * 10;
 	}
 
 	/* Road stops is 'only' updating some caches */

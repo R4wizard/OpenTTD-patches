@@ -145,6 +145,29 @@ static inline T Clamp(const T a, const T min, const T max)
 }
 
 /**
+ * Clamp a value between an interval.
+ *
+ * This function returns a value which is between the given interval of
+ * min and max. If the given value is in this interval the value itself
+ * is returned otherwise the border of the interval is returned, according
+ * which side of the interval was 'left'.
+ *
+ * @note If the min value is greater than the return value is the average of the min and max.
+ * @param a The value to clamp/truncate.
+ * @param min The minimum of the interval.
+ * @param max the maximum of the interval.
+ * @returns A value between min and max which is closest to a.
+ */
+template <typename T>
+static inline T SoftClamp(const T a, const T min, const T max)
+{
+	if (min > max) return (min + max) / 2;
+	if (a <= min) return min;
+	if (a >= max) return max;
+	return a;
+}
+
+/**
  * Clamp an integer between an interval.
  *
  * This function returns a value which is between the given interval of
@@ -344,33 +367,6 @@ static inline int RoundDivSU(int a, uint b)
 		/* -0.5 is rounded to 0 */
 		return (a - ((int)b - 1) / 2) / (int)b;
 	}
-}
-
-/**
- * Test if <tt> sqrt(a) <= sqrt(b) + sqrt(c) </tt>
- *
- * This function can tell you what's the relation between some of your values
- * even thought you know only squares of them. Useful when comparing euclidean
- * distances, it's easier to calculate them squared (#DistanceSquare) e.g.
- * having a squared town radius R and squared distance D, to tell if the distance
- * is further then N tiles beyond the town you may check if !SqrtCmp(D, R, N * N).
- *
- * @param a first value squared
- * @param b second value squared
- * @param c third value squared
- * @return sqrt(a) <= sqrt(b) + sqrt(c)
- *
- * @pre 4 * b * c <= UINT32_MAX
- */
-inline bool SqrtCmp(uint32 a, uint32 b, uint32 c)
-{
-	assert(c == 0 || b <= UINT32_MAX / 4 / c);
-
-	/* we can square the inequality twice to get rid of square roots
-	 * but some edge case must be checked first */
-	if (a <= b + c) return true;
-	uint32 d = a - (b + c);
-	return d <= UINT16_MAX && d * d <= 4 * b * c;
 }
 
 uint32 IntSqrt(uint32 num);

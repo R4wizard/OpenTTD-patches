@@ -623,6 +623,7 @@ static uint32 VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *object,
 
 		case 0x4A: {
 			if (v->type != VEH_TRAIN) return 0;
+			if (Train::From(v)->IsVirtual()) return 0x1FF;
 			RailType rt = GetTileRailType(v->tile);
 			return (HasPowerOnRail(Train::From(v)->railtype, rt) ? 0x100 : 0) | GetReverseRailTypeTranslation(rt, object->ro.grffile);
 		}
@@ -716,9 +717,14 @@ static uint32 VehicleGetVariable(Vehicle *v, const VehicleScopeResolver *object,
 				const Train *t = Train::From(v);
 				bool is_powered_wagon = HasBit(t->flags, VRF_POWEREDWAGON);
 				const Train *u = is_powered_wagon ? t->First() : t; // for powered wagons the engine defines the type of engine (i.e. railtype)
-				RailType railtype = GetRailType(v->tile);
 				bool powered = t->IsEngine() || is_powered_wagon;
-				bool has_power = HasPowerOnRail(u->railtype, railtype);
+				bool has_power;
+				if (u->IsVirtual()) {
+					has_power = true;
+				} else {
+					RailType railtype = GetRailType(v->tile);
+					has_power = HasPowerOnRail(u->railtype, railtype);
+				}
 
 				if (powered && has_power) SetBit(modflags, 5);
 				if (powered && !has_power) SetBit(modflags, 6);
@@ -1023,17 +1029,29 @@ VehicleResolverObject::VehicleResolverObject(EngineID engine_type, const Vehicle
 
 
 
-SpriteID GetCustomEngineSprite(EngineID engine, const Vehicle *v, Direction direction, EngineImageType image_type)
+void GetCustomEngineSprite(EngineID engine, const Vehicle *v, Direction direction, EngineImageType image_type, VehicleSpriteSeq *result)
 {
-	VehicleResolverObject object(engine, v, VehicleResolverObject::WO_CACHED, false, CBID_NO_CALLBACK, image_type);
-	const SpriteGroup *group = object.Resolve();
-	if (group == NULL || group->GetNumResults() == 0) return 0;
+	VehicleResolverObject object(engine, v, VehicleResolverObject::WO_CACHED, false, CBID_NO_CALLBACK);
+	result->Clear();
 
-	return group->GetResult() + (direction % group->GetNumResults());
+	bool sprite_stack = HasBit(EngInfo(engine)->misc_flags, EF_SPRITE_STACK);
+	uint max_stack = sprite_stack ? lengthof(result->seq) : 1;
+	for (uint stack = 0; stack < max_stack; ++stack) {
+		object.ResetState();
+		object.callback_param1 = image_type | (stack << 8);
+		const SpriteGroup *group = object.Resolve();
+		uint32 reg100 = sprite_stack ? GetRegister(0x100) : 0;
+		if (group != NULL && group->GetNumResults() != 0) {
+			result->seq[result->count].sprite = group->GetResult() + (direction % group->GetNumResults());
+			result->seq[result->count].pal    = GB(reg100, 0, 16); // zero means default recolouring
+			result->count++;
+		}
+		if (!HasBit(reg100, 31)) break;
+	}
 }
 
 
-SpriteID GetRotorOverrideSprite(EngineID engine, const Aircraft *v, bool info_view, EngineImageType image_type)
+void GetRotorOverrideSprite(EngineID engine, const struct Aircraft *v, bool info_view, EngineImageType image_type, VehicleSpriteSeq *result)
 {
 	const Engine *e = Engine::Get(engine);
 
@@ -1041,14 +1059,24 @@ SpriteID GetRotorOverrideSprite(EngineID engine, const Aircraft *v, bool info_vi
 	assert(e->type == VEH_AIRCRAFT);
 	assert(!(e->u.air.subtype & AIR_CTOL));
 
-	VehicleResolverObject object(engine, v, VehicleResolverObject::WO_SELF, info_view, CBID_NO_CALLBACK, image_type);
-	const SpriteGroup *group = object.Resolve();
+	VehicleResolverObject object(engine, v, VehicleResolverObject::WO_SELF, info_view, CBID_NO_CALLBACK);
+	result->Clear();
+	uint rotor_pos = v == NULL || info_view ? 0 : v->Next()->Next()->state;
 
-	if (group == NULL || group->GetNumResults() == 0) return 0;
-
-	if (v == NULL || info_view) return group->GetResult();
-
-	return group->GetResult() + (v->Next()->Next()->state % group->GetNumResults());
+	bool sprite_stack = HasBit(e->info.misc_flags, EF_SPRITE_STACK);
+	uint max_stack = sprite_stack ? lengthof(result->seq) : 1;
+	for (uint stack = 0; stack < max_stack; ++stack) {
+		object.ResetState();
+		object.callback_param1 = image_type | (stack << 8);
+		const SpriteGroup *group = object.Resolve();
+		uint32 reg100 = sprite_stack ? GetRegister(0x100) : 0;
+		if (group != NULL && group->GetNumResults() != 0) {
+			result->seq[result->count].sprite = group->GetResult() + (rotor_pos % group->GetNumResults());
+			result->seq[result->count].pal    = GB(reg100, 0, 16); // zero means default recolouring
+			result->count++;
+		}
+		if (!HasBit(reg100, 31)) break;
+	}
 }
 
 

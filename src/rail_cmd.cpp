@@ -21,6 +21,7 @@
 #include "autoslope.h"
 #include "water.h"
 #include "tunnelbridge_map.h"
+#include "bridge_signal_map.h"
 #include "vehicle_func.h"
 #include "sound_func.h"
 #include "tunnelbridge.h"
@@ -36,10 +37,13 @@
 #include "tracerestrict.h"
 #include "programmable_signals.h"
 #include "spritecache.h"
+#include "core/container_func.hpp"
 
 #include "table/strings.h"
 #include "table/railtypes.h"
 #include "table/track_land.h"
+
+#include <vector>
 
 #include "safeguards.h"
 
@@ -50,8 +54,6 @@ RailtypeInfo _railtypes[RAILTYPE_END];
 RailType _sorted_railtypes[RAILTYPE_END];
 uint8 _sorted_railtypes_size;
 TileIndex _rail_track_endtile; ///< The end of a rail track; as hidden return from the rail build/remove command for GUI purposes.
-
-assert_compile(sizeof(_original_railtypes) <= sizeof(_railtypes));
 
 /** Enum holding the signal offset in the sprite sheet according to the side it is representing. */
 enum SignalOffsets {
@@ -70,8 +72,20 @@ enum SignalOffsets {
  */
 void ResetRailTypes()
 {
-	memset(_railtypes, 0, sizeof(_railtypes));
-	memcpy(_railtypes, _original_railtypes, sizeof(_original_railtypes));
+	assert_compile(lengthof(_original_railtypes) <= lengthof(_railtypes));
+
+	uint i = 0;
+	for (; i < lengthof(_original_railtypes); i++) _railtypes[i] = _original_railtypes[i];
+
+	static const RailtypeInfo empty_railtype = {
+		{0,0,0,0,0,0,0,0,0,0,0,0},
+		{0,0,0,0,0,0,0,0,{}},
+		{0,0,0,0,0,0,0,0},
+		{0,0,0,0,0,0},
+		0, RAILTYPES_NONE, RAILTYPES_NONE, 0, 0, 0, RTFB_NONE, 0, 0, 0, 0, 0,
+		RailTypeLabelList(), 0, 0, RAILTYPES_NONE, RAILTYPES_NONE, 0,
+		{}, {} };
+	for (; i < lengthof(_railtypes);          i++) _railtypes[i] = empty_railtype;
 }
 
 void ResolveRailTypeGUISprites(RailtypeInfo *rti)
@@ -157,11 +171,9 @@ RailType AllocateRailType(RailTypeLabel label)
 
 		if (rti->label == 0) {
 			/* Set up new rail type */
-			memcpy(rti, &_railtypes[RAILTYPE_RAIL], sizeof(*rti));
+			*rti = _original_railtypes[RAILTYPE_RAIL];
 			rti->label = label;
-			/* Clear alternate label list. Can't use Reset() here as that would free
-			 * the data pointer of RAILTYPE_RAIL and not our new rail type. */
-			new (&rti->alternate_labels) RailTypeLabelList;
+			rti->alternate_labels.Clear();
 
 			/* Make us compatible with ourself. */
 			rti->powered_railtypes    = (RailTypes)(1 << rt);
@@ -455,7 +467,7 @@ CommandCost CmdBuildSingleRail(TileIndex tile, DoCommandFlag flags, uint32 p1, u
 			CommandCost ret = CheckTileOwnership(tile);
 			if (ret.Failed()) return ret;
 
-			if (!IsPlainRail(tile)) return CMD_ERROR;
+			if (!IsPlainRail(tile)) return DoCommand(tile, 0, 0, flags, CMD_LANDSCAPE_CLEAR); // just get appropriate error message
 
 			if (!IsCompatibleRail(GetRailType(tile), railtype)) return_cmd_error(STR_ERROR_IMPOSSIBLE_TRACK_COMBINATION);
 
@@ -1022,6 +1034,20 @@ CommandCost CmdBuildTrainDepot(TileIndex tile, DoCommandFlag flags, uint32 p1, u
 	return cost;
 }
 
+static void ClearBridgeTunnelSignalSimulation(TileIndex entrance, TileIndex exit)
+{
+	if (IsBridge(entrance)) ClearBridgeEntranceSimulatedSignals(entrance);
+	ClrTunnelBridgeSignalSimulationEntrance(entrance);
+	ClrTunnelBridgeSignalSimulationExit(exit);
+}
+
+static void SetupBridgeTunnelSignalSimulation(TileIndex entrance, TileIndex exit)
+{
+	SetTunnelBridgeSignalSimulationEntrance(entrance);
+	SetTunnelBridgeSignalState(entrance, SIGNAL_STATE_GREEN);
+	SetTunnelBridgeSignalSimulationExit(exit);
+}
+
 /**
  * Build signals, alternate between double/single, signal/semaphore,
  * pre/exit/combo-signals, and what-else not. If the rail piece does not
@@ -1076,7 +1102,7 @@ CommandCost CmdBuildSingleSignal(TileIndex tile, DoCommandFlag flags, uint32 p1,
 		cost = CommandCost();
 		bool flip_variant = false;
 		bool is_pbs = (sigtype == SIGTYPE_PBS) || (sigtype == SIGTYPE_PBS_ONEWAY);
-		if (!HasWormholeSignals(tile)) { // toggle signal zero costs.
+		if (!IsTunnelBridgeWithSignalSimulation(tile)) { // toggle signal zero costs.
 			if (convert_signal) return_cmd_error(STR_ERROR_THERE_ARE_NO_SIGNALS);
 			if (p2 != 12) cost = CommandCost(EXPENSES_CONSTRUCTION, _price[PR_BUILD_SIGNALS] * ((GetTunnelBridgeLength(tile, tile_exit) + 4) >> 2)); // minimal 1
 		} else {
@@ -1089,7 +1115,9 @@ CommandCost CmdBuildSingleSignal(TileIndex tile, DoCommandFlag flags, uint32 p1,
 			}
 		}
 		if (flags & DC_EXEC) {
-			if (p2 == 0 && HasWormholeSignals(tile)) { // Toggle signal if already signals present.
+			Company * const c = Company::Get(GetTileOwner(tile));
+			if (IsTunnelBridgeWithSignalSimulation(tile)) c->infrastructure.signal -= GetTunnelBridgeSignalSimulationSignalCount(tile, tile_exit);
+			if (p2 == 0 && IsTunnelBridgeWithSignalSimulation(tile)) { // Toggle signal if already signals present.
 				if (convert_signal) {
 					if (flip_variant) {
 						SetTunnelBridgeSemaphore(tile, !IsTunnelBridgeSemaphore(tile));
@@ -1103,37 +1131,28 @@ CommandCost CmdBuildSingleSignal(TileIndex tile, DoCommandFlag flags, uint32 p1,
 					SetTunnelBridgePBS(tile, !IsTunnelBridgePBS(tile));
 					SetTunnelBridgePBS(tile_exit, IsTunnelBridgePBS(tile));
 				} else {
-					if (IsTunnelBridgeEntrance(tile)) {
-						ClrBitTunnelBridgeSignal(tile);
-						ClrBitTunnelBridgeExit(tile_exit);
-						SetBitTunnelBridgeExit(tile);
-						SetBitTunnelBridgeSignal(tile_exit);
+					if (IsTunnelBridgeSignalSimulationEntrance(tile)) {
+						ClearBridgeTunnelSignalSimulation(tile, tile_exit);
+						SetupBridgeTunnelSignalSimulation(tile_exit, tile);
 					} else {
-						ClrBitTunnelBridgeSignal(tile_exit);
-						ClrBitTunnelBridgeExit(tile);
-						SetBitTunnelBridgeExit(tile_exit);
-						SetBitTunnelBridgeSignal(tile);
+						ClearBridgeTunnelSignalSimulation(tile_exit, tile);
+						SetupBridgeTunnelSignalSimulation(tile, tile_exit);
 					}
 				}
 			} else {
 				/* Create one direction tunnel/bridge if required. */
 				if (p2 == 0) {
-					SetBitTunnelBridgeSignal(tile);
-					SetBitTunnelBridgeExit(tile_exit);
+					SetupBridgeTunnelSignalSimulation(tile, tile_exit);
 				} else if (p2 == 4 || p2 == 8) {
 					DiagDirection tbdir = GetTunnelBridgeDirection(tile);
 					/* If signal only on one side build accoringly one-way tunnel/bridge. */
 					if ((p2 == 8 && (tbdir == DIAGDIR_NE || tbdir == DIAGDIR_SE)) ||
 						(p2 == 4 && (tbdir == DIAGDIR_SW || tbdir == DIAGDIR_NW))) {
-						ClrBitTunnelBridgeExit(tile);
-						ClrBitTunnelBridgeSignal(tile_exit);
-						SetBitTunnelBridgeSignal(tile);
-						SetBitTunnelBridgeExit(tile_exit);
+						ClearBridgeTunnelSignalSimulation(tile_exit, tile);
+						SetupBridgeTunnelSignalSimulation(tile, tile_exit);
 					} else {
-						ClrBitTunnelBridgeSignal(tile);
-						ClrBitTunnelBridgeExit(tile_exit);
-						SetBitTunnelBridgeSignal(tile_exit);
-						SetBitTunnelBridgeExit(tile);
+						ClearBridgeTunnelSignalSimulation(tile, tile_exit);
+						SetupBridgeTunnelSignalSimulation(tile_exit, tile);
 					}
 				}
 				if (p2 == 0 || p2 == 4 || p2 == 8) {
@@ -1143,13 +1162,15 @@ CommandCost CmdBuildSingleSignal(TileIndex tile, DoCommandFlag flags, uint32 p1,
 					SetTunnelBridgePBS(tile_exit, is_pbs);
 				}
 			}
-			if (IsTunnelBridgeExit(tile) && IsTunnelBridgePBS(tile) && !HasTunnelBridgeReservation(tile)) SetTunnelBridgeExitGreen(tile, false);
-			if (IsTunnelBridgeExit(tile_exit) && IsTunnelBridgePBS(tile_exit) && !HasTunnelBridgeReservation(tile_exit)) SetTunnelBridgeExitGreen(tile_exit, false);
+			if (IsTunnelBridgeSignalSimulationExit(tile) && IsTunnelBridgePBS(tile) && !HasTunnelBridgeReservation(tile)) SetTunnelBridgeSignalState(tile, SIGNAL_STATE_RED);
+			if (IsTunnelBridgeSignalSimulationExit(tile_exit) && IsTunnelBridgePBS(tile_exit) && !HasTunnelBridgeReservation(tile_exit)) SetTunnelBridgeSignalState(tile_exit, SIGNAL_STATE_RED);
 			MarkBridgeOrTunnelDirty(tile);
 			AddSideToSignalBuffer(tile, INVALID_DIAGDIR, GetTileOwner(tile));
 			AddSideToSignalBuffer(tile_exit, INVALID_DIAGDIR, GetTileOwner(tile));
 			YapfNotifyTrackLayoutChange(tile, track);
 			YapfNotifyTrackLayoutChange(tile_exit, track);
+			if (IsTunnelBridgeWithSignalSimulation(tile)) c->infrastructure.signal += GetTunnelBridgeSignalSimulationSignalCount(tile, tile_exit);
+			DirtyCompanyInfrastructureWindows(GetTileOwner(tile));
 		}
 		return cost;
 	}
@@ -1328,7 +1349,7 @@ static bool CheckSignalAutoFill(TileIndex &tile, Trackdir &trackdir, int &signal
 			return true;
 
 		case MP_TUNNELBRIDGE: {
-			if (!remove && HasWormholeSignals(tile)) return false;
+			if (!remove && IsTunnelBridgeWithSignalSimulation(tile)) return false;
 			TileIndex orig_tile = tile; // backup old value
 
 			if (GetTunnelBridgeTransportType(tile) != TRANSPORT_RAIL) return false;
@@ -1438,10 +1459,22 @@ static CommandCost CmdSignalTrackHelper(TileIndex tile, DoCommandFlag flags, uin
 	Trackdir last_suitable_trackdir = INVALID_TRACKDIR;
 	CommandCost last_error = CMD_ERROR;
 	bool had_success = false;
+	std::vector<TileIndex> tunnel_bridge_blacklist;
 	for (;;) {
-		/* only build/remove signals with the specified density */
+		bool tile_ok = true;
+		if (IsTileType(tile, MP_TUNNELBRIDGE)) {
+			if (container_unordered_remove(tunnel_bridge_blacklist, tile) > 0) {
+				/* This tile is blacklisted, skip tile and remove from blacklist.
+				 * Mark last used counter as current tile.
+				 */
+				tile_ok = false;
+				last_used_ctr = signal_ctr;
+				last_suitable_tile = INVALID_TILE;
+			}
+		}
 
-		if (remove || minimise_gaps || signal_ctr % signal_density == 0 || IsTileType(tile, MP_TUNNELBRIDGE)) {
+		/* only build/remove signals with the specified density */
+		if (tile_ok && (remove || minimise_gaps || signal_ctr % signal_density == 0 || IsTileType(tile, MP_TUNNELBRIDGE))) {
 			uint32 p1 = GB(TrackdirToTrack(trackdir), 0, 3);
 			SB(p1, 3, 1, mode);
 			SB(p1, 4, 1, semaphores);
@@ -1456,6 +1489,10 @@ static CommandCost CmdSignalTrackHelper(TileIndex tile, DoCommandFlag flags, uin
 			/* Test tiles in between for suitability as well if minimising gaps. */
 			bool test_only = !remove && minimise_gaps && signal_ctr < (last_used_ctr + signal_density);
 			CommandCost ret = DoCommand(tile, p1, signals, test_only ? flags & ~DC_EXEC : flags, remove ? CMD_REMOVE_SIGNALS : CMD_BUILD_SIGNALS);
+			if (!test_only && ret.Succeeded() && IsTileType(tile, MP_TUNNELBRIDGE) && GetTunnelBridgeDirection(tile) == TrackdirToExitdir(trackdir)) {
+				/* Blacklist far end of tunnel if we just actioned the near end */
+				tunnel_bridge_blacklist.push_back(GetOtherTunnelBridgeEnd(tile));
+			}
 
 			if (ret.Succeeded()) {
 				/* Remember last track piece where we can place a signal. */
@@ -1473,6 +1510,10 @@ static CommandCost CmdSignalTrackHelper(TileIndex tile, DoCommandFlag flags, uin
 				if (HasBit(signal_dir, 1)) signals |= SignalAgainstTrackdir(last_suitable_trackdir);
 
 				ret = DoCommand(last_suitable_tile, p1, signals, flags, remove ? CMD_REMOVE_SIGNALS : CMD_BUILD_SIGNALS);
+				if (ret.Succeeded() && IsTileType(last_suitable_tile, MP_TUNNELBRIDGE) && GetTunnelBridgeDirection(last_suitable_tile) == TrackdirToExitdir(last_suitable_trackdir)) {
+					/* Blacklist far end of tunnel if we just actioned the near end */
+					tunnel_bridge_blacklist.push_back(GetOtherTunnelBridgeEnd(last_suitable_tile));
+				}
 			}
 
 			/* Collect cost. */
@@ -1480,14 +1521,7 @@ static CommandCost CmdSignalTrackHelper(TileIndex tile, DoCommandFlag flags, uin
 				/* Be user-friendly and try placing signals as much as possible */
 				if (ret.Succeeded()) {
 					had_success = true;
-					if (IsTileType(tile, MP_TUNNELBRIDGE)) {
-						if ((!autofill && GetTunnelBridgeDirection(tile) == TrackdirToExitdir(trackdir)) ||
-								(autofill && GetTunnelBridgeDirection(tile) != TrackdirToExitdir(trackdir))) {
-							total_cost.AddCost(ret);
-						}
-					} else {
-						total_cost.AddCost(ret);
-					}
+					total_cost.AddCost(ret);
 					last_used_ctr = last_suitable_ctr;
 					last_suitable_tile = INVALID_TILE;
 				} else {
@@ -1566,7 +1600,7 @@ CommandCost CmdRemoveSingleSignal(TileIndex tile, DoCommandFlag flags, uint32 p1
 	if (IsTileType(tile, MP_TUNNELBRIDGE)) {
 		TileIndex end = GetOtherTunnelBridgeEnd(tile);
 		if (GetTunnelBridgeTransportType(tile) != TRANSPORT_RAIL) return_cmd_error(STR_ERROR_THERE_IS_NO_RAILROAD_TRACK);
-		if (!HasWormholeSignals(tile)) return_cmd_error(STR_ERROR_THERE_ARE_NO_SIGNALS);
+		if (!IsTunnelBridgeWithSignalSimulation(tile)) return_cmd_error(STR_ERROR_THERE_ARE_NO_SIGNALS);
 
 		cost *= ((GetTunnelBridgeLength(tile, end) + 4) >> 2);
 
@@ -1594,19 +1628,17 @@ CommandCost CmdRemoveSingleSignal(TileIndex tile, DoCommandFlag flags, uint32 p1
 	/* Do it? */
 	if (flags & DC_EXEC) {
 
-		if (HasWormholeSignals(tile)) { // handle tunnel/bridge signals.
+		if (IsTunnelBridgeWithSignalSimulation(tile)) { // handle tunnel/bridge signals.
 			TileIndex end = GetOtherTunnelBridgeEnd(tile);
-			ClrBitTunnelBridgeExit(tile);
-			ClrBitTunnelBridgeExit(end);
-			ClrBitTunnelBridgeSignal(tile);
-			ClrBitTunnelBridgeSignal(end);
-			_m[tile].m2 = 0;
-			_m[end].m2 = 0;
+			Company::Get(GetTileOwner(tile))->infrastructure.signal -= GetTunnelBridgeSignalSimulationSignalCount(tile, end);
+			ClearBridgeTunnelSignalSimulation(end, tile);
+			ClearBridgeTunnelSignalSimulation(tile, end);
 			MarkBridgeOrTunnelDirty(tile);
 			AddSideToSignalBuffer(tile, INVALID_DIAGDIR, GetTileOwner(tile));
 			AddSideToSignalBuffer(end, INVALID_DIAGDIR, GetTileOwner(tile));
 			YapfNotifyTrackLayoutChange(tile, track);
 			YapfNotifyTrackLayoutChange(end, track);
+			DirtyCompanyInfrastructureWindows(GetTileOwner(tile));
 			return CommandCost(EXPENSES_CONSTRUCTION, cost);
 		}
 
@@ -2061,9 +2093,9 @@ static void DrawSingleSignal(TileIndex tile, const RailtypeInfo *rti, Track trac
 		sprite = SPR_PROGSIGNAL_BASE + 16 + image * 2 + condition;
 		is_custom_sprite = false;
 	} else {
-		uint origin_slot = GetOriginFileSlot(sprite);
-		extern uint _first_user_grf_file_index;
-		extern uint _opengfx_grf_file_index;
+		int origin_slot = GetOriginFileSlot(sprite);
+		extern int _first_user_grf_file_index;
+		extern int _opengfx_grf_file_index;
 		if (!is_custom_sprite) is_custom_sprite = origin_slot != _opengfx_grf_file_index && (origin_slot >= _first_user_grf_file_index);
 	}
 
@@ -2591,7 +2623,7 @@ static void DrawTile_Track(TileInfo *ti)
 
 		if (HasBit(_display_opt, DO_FULL_DETAIL)) DrawTrackDetails(ti, rti);
 
-		if (HasCatenaryDrawn(GetRailType(ti->tile))) DrawCatenary(ti);
+		if (HasRailCatenaryDrawn(GetRailType(ti->tile))) DrawRailCatenary(ti);
 
 		if (HasSignals(ti->tile)) DrawSignals(ti->tile, rails, rti);
 	} else {
@@ -2666,7 +2698,7 @@ static void DrawTile_Track(TileInfo *ti)
 		int depot_sprite = GetCustomRailSprite(rti, ti->tile, RTSG_DEPOT);
 		relocation = depot_sprite != 0 ? depot_sprite - SPR_RAIL_DEPOT_SE_1 : rti->GetRailtypeSpriteOffset();
 
-		if (HasCatenaryDrawn(GetRailType(ti->tile))) DrawCatenary(ti);
+		if (HasRailCatenaryDrawn(GetRailType(ti->tile))) DrawRailCatenary(ti);
 
 		DrawRailTileSeq(ti, dts, TO_BUILDINGS, relocation, 0, _drawtile_track_palette);
 	}
@@ -2917,8 +2949,8 @@ static void GetTileDesc_Track(TileIndex tile, TileDesc *td)
 {
 	const RailtypeInfo *rti = GetRailTypeInfo(GetRailType(tile));
 	td->rail_speed = rti->max_speed;
+	td->railtype = rti->strings.name;
 	td->owner[0] = GetTileOwner(tile);
-	SetDParamX(td->dparam, 0, rti->strings.name);
 	switch (GetRailTileType(tile)) {
 		case RAIL_TILE_NORMAL:
 			td->str = STR_LAI_RAIL_DESCRIPTION_TRACK;
@@ -3004,7 +3036,6 @@ static void GetTileDesc_Track(TileIndex tile, TileDesc *td)
 
 			if (IsRestrictedSignal(tile)) {
 				SetDParamX(td->dparam, 0, td->str);
-				SetDParamX(td->dparam, 1, rti->strings.name);
 				td->str = STR_LAI_RAIL_DESCRIPTION_RESTRICTED_SIGNAL;
 			}
 			break;

@@ -77,6 +77,9 @@ GRFLoadedFeatures _loaded_newgrf_features;
 
 static const uint MAX_SPRITEGROUP = UINT8_MAX; ///< Maximum GRF-local ID for a spritegroup.
 
+/** Base GRF ID for OpenTTD's base graphics GRFs. */
+static const uint32 OPENTTD_GRAPHICS_BASE_GRF_ID = BSWAP32(0xFF4F5400);
+
 /** Temporary data during loading of GRFs */
 struct GrfProcessingState {
 private:
@@ -2353,7 +2356,6 @@ static ChangeInfoResult TownHouseChangeInfo(uint hid, int numinfo, int prop, Byt
 				housespec->grf_prop.local_id = hid + i;
 				housespec->grf_prop.subst_id = subs_id;
 				housespec->grf_prop.grffile = _cur.grffile;
-				housespec->construction_cost = 0xFFFF;
 				housespec->random_colour[0] = 0x04;  // those 4 random colours are the base colour
 				housespec->random_colour[1] = 0x08;  // for all new houses
 				housespec->random_colour[2] = 0x0C;  // they stand for red, blue, orange and green
@@ -2518,14 +2520,6 @@ static ChangeInfoResult TownHouseChangeInfo(uint hid, int numinfo, int prop, Byt
 
 			case 0x22: // long maximum year
 				housespec->max_year = buf->ReadWord();
-				break;
-
-			case 0x23: // Build cost multiplier
-				housespec->construction_cost = buf->ReadDWord();
-				break;
-
-			case 0x24:
-				housespec->num_variants = buf->ReadByte();
 				break;
 
 			default:
@@ -3019,7 +3013,7 @@ static ChangeInfoResult SoundEffectChangeInfo(uint sid, int numinfo, int prop, B
 	}
 
 	if (sid + numinfo - ORIGINAL_SAMPLE_COUNT > _cur.grffile->num_sounds) {
-		grfmsg(1, "SoundEffectChangeInfo: Attemting to change undefined sound effect (%u), max (%u). Ignoring.", sid + numinfo, ORIGINAL_SAMPLE_COUNT + _cur.grffile->num_sounds);
+		grfmsg(1, "SoundEffectChangeInfo: Attempting to change undefined sound effect (%u), max (%u). Ignoring.", sid + numinfo, ORIGINAL_SAMPLE_COUNT + _cur.grffile->num_sounds);
 		return CIR_INVALID_ID;
 	}
 
@@ -5596,7 +5590,7 @@ static const Action5Type _action5_types[] = {
 	/* 0x02 */ { A5BLOCK_INVALID,      0,                            0, 0,                                           "Type 0x02"                },
 	/* 0x03 */ { A5BLOCK_INVALID,      0,                            0, 0,                                           "Type 0x03"                },
 	/* 0x04 */ { A5BLOCK_ALLOW_OFFSET, SPR_SIGNALS_BASE,             1, PRESIGNAL_SEMAPHORE_AND_PBS_SPRITE_COUNT,    "Signal graphics"          },
-	/* 0x05 */ { A5BLOCK_ALLOW_OFFSET, SPR_ELRAIL_BASE,              1, ELRAIL_SPRITE_COUNT,                         "Catenary graphics"        },
+	/* 0x05 */ { A5BLOCK_ALLOW_OFFSET, SPR_ELRAIL_BASE,              1, ELRAIL_SPRITE_COUNT,                         "Rail catenary graphics"   },
 	/* 0x06 */ { A5BLOCK_ALLOW_OFFSET, SPR_SLOPES_BASE,              1, NORMAL_AND_HALFTILE_FOUNDATION_SPRITE_COUNT, "Foundation graphics"      },
 	/* 0x07 */ { A5BLOCK_INVALID,      0,                           75, 0,                                           "TTDP GUI graphics"        }, // Not used by OTTD.
 	/* 0x08 */ { A5BLOCK_ALLOW_OFFSET, SPR_CANALS_BASE,              1, CANALS_SPRITE_COUNT,                         "Canal graphics"           },
@@ -5633,7 +5627,7 @@ static void GraphicsNew(ByteReader *buf)
 	uint16 offset = HasBit(type, 7) ? buf->ReadExtendedByte() : 0;
 	ClrBit(type, 7); // Clear the high bit as that only indicates whether there is an offset.
 
-	if ((type == 0x0D) && (num == 10) && _cur.grffile->is_ottdfile) {
+	if ((type == 0x0D) && (num == 10) && HasBit(_cur.grfconfig->flags, GCF_SYSTEM)) {
 		/* Special not-TTDP-compatible case used in openttd.grf
 		 * Missing shore sprites and initialisation of SPR_SHORE_BASE */
 		grfmsg(2, "GraphicsNew: Loading 10 missing shore sprites from extra grf.");
@@ -5688,7 +5682,7 @@ static void GraphicsNew(ByteReader *buf)
 		LoadNextSprite(replace == 0 ? _cur.spriteid++ : replace++, _cur.file_index, _cur.nfo_line, _cur.grf_container_ver);
 	}
 
-	if (type == 0x04 && (_cur.grffile->is_ottdfile || _cur.grfconfig->ident.grfid == BSWAP32(0xFF4F4701))) {
+	if (type == 0x04 && ((_cur.grfconfig->ident.grfid & 0x00FFFFFF) == OPENTTD_GRAPHICS_BASE_GRF_ID || _cur.grfconfig->ident.grfid == BSWAP32(0xFF4F4701))) {
 		/* Signal graphics action 5: Fill duplicate signal sprite block if this is a baseset GRF or OpenGFX */
 		const SpriteID end = offset + num;
 		for (SpriteID i = offset; i < end; i++) {
@@ -5711,35 +5705,6 @@ static void SkipAct5(ByteReader *buf)
 	_cur.skip_sprites = buf->ReadExtendedByte();
 
 	grfmsg(3, "SkipAct5: Skipping %d sprites", _cur.skip_sprites);
-}
-
-/**
- * Check whether we are (obviously) missing some of the extra
- * (Action 0x05) sprites that we like to use.
- * When missing sprites are found a warning will be shown.
- */
-void CheckForMissingSprites()
-{
-	/* Don't break out quickly, but allow to check the other
-	 * sprites as well, so we can give the best information. */
-	bool missing = false;
-	for (uint8 i = 0; i < lengthof(_action5_types); i++) {
-		const Action5Type *type = &_action5_types[i];
-		if (type->block_type == A5BLOCK_INVALID) continue;
-
-		for (uint j = 0; j < type->max_sprites; j++) {
-			if (!SpriteExists(type->sprite_base + j)) {
-				DEBUG(grf, 0, "%s sprites are missing", type->name);
-				missing = true;
-				/* No need to log more of the same. */
-				break;
-			}
-		}
-	}
-
-	if (missing) {
-		ShowErrorMessage(IsReleasedVersion() ? STR_NEWGRF_ERROR_MISSING_SPRITES : STR_NEWGRF_ERROR_MISSING_SPRITES_UNSTABLE, INVALID_STRING_ID, WL_CRITICAL);
-	}
 }
 
 /**
@@ -6219,7 +6184,7 @@ static void ScanInfo(ByteReader *buf)
 	}
 
 	/* GRF IDs starting with 0xFF are reserved for internal TTDPatch use */
-	if (GB(grfid, 24, 8) == 0xFF) SetBit(_cur.grfconfig->flags, GCF_SYSTEM);
+	if (GB(grfid, 0, 8) == 0xFF) SetBit(_cur.grfconfig->flags, GCF_SYSTEM);
 
 	AddGRFTextToList(&_cur.grfconfig->name->text, 0x7F, grfid, false, name);
 
@@ -8603,13 +8568,6 @@ static void FinaliseHouseArray()
 			 * building_flags to zero here to make sure any house following
 			 * this one in the pool is properly handled as 1x1 house. */
 			hs->building_flags = TILE_NO_FLAG;
-		} else if (hs->enabled && (hs->building_flags && BUILDING_HAS_1_TILE)) {
-			if (hs->construction_cost == 0xFFFF) {
-				hs->construction_cost = DefaultHouseCostBaseMultiplier(
-						hs->callback_mask, hs->population, hs->mail_generation,
-						hs->cargo_acceptance[0], hs->cargo_acceptance[1], hs->cargo_acceptance[2],
-						hs->accepts_cargo[0], hs->accepts_cargo[1], hs->accepts_cargo[2]);
-			}
 		}
 	}
 
@@ -8885,11 +8843,10 @@ void LoadNewGRFFile(GRFConfig *config, uint file_index, GrfLoadingStage stage, S
 		if (_cur.grffile == NULL) usererror("File '%s' lost in cache.\n", filename);
 		if (stage == GLS_RESERVE && config->status != GCS_INITIALISED) return;
 		if (stage == GLS_ACTIVATION && !HasBit(config->flags, GCF_RESERVED)) return;
-		_cur.grffile->is_ottdfile = config->IsOpenTTDBaseGRF();
 	}
 
-	if (file_index > LAST_GRF_SLOT) {
-		DEBUG(grf, 0, "'%s' is not loaded as the maximum number of GRFs has been reached", filename);
+	if (file_index >= MAX_FILE_SLOTS) {
+		DEBUG(grf, 0, "'%s' is not loaded as the maximum number of file slots has been reached", filename);
 		config->status = GCS_DISABLED;
 		config->error  = new GRFError(STR_NEWGRF_ERROR_MSG_FATAL, STR_NEWGRF_ERROR_TOO_MANY_NEWGRFS_LOADED);
 		return;
@@ -9231,8 +9188,9 @@ static void AfterLoadGRFs()
  * Load all the NewGRFs.
  * @param load_index The offset for the first sprite to add.
  * @param file_index The Fio index of the first NewGRF to load.
+ * @param num_baseset Number of NewGRFs at the front of the list to look up in the baseset dir instead of the newgrf dir.
  */
-void LoadNewGRF(uint load_index, uint file_index)
+void LoadNewGRF(uint load_index, uint file_index, uint num_baseset)
 {
 	/* In case of networking we need to "sync" the start values
 	 * so all NewGRFs are loaded equally. For this we use the
@@ -9242,6 +9200,7 @@ void LoadNewGRF(uint load_index, uint file_index)
 	Year year            = _cur_year;
 	DateFract date_fract = _date_fract;
 	uint16 tick_counter  = _tick_counter;
+	uint8 tick_skip_counter = _tick_skip_counter;
 	byte display_opt     = _display_opt;
 
 	if (_networking) {
@@ -9249,7 +9208,9 @@ void LoadNewGRF(uint load_index, uint file_index)
 		_date         = ConvertYMDToDate(_cur_year, 0, 1);
 		_date_fract   = 0;
 		_tick_counter = 0;
+		_tick_skip_counter = 0;
 		_display_opt  = 0;
+		SetScaledTickVariables();
 	}
 
 	InitializeGRFSpecial();
@@ -9291,13 +9252,14 @@ void LoadNewGRF(uint load_index, uint file_index)
 		}
 
 		uint slot = file_index;
+		uint num_non_static = 0;
 
 		_cur.stage = stage;
 		for (GRFConfig *c = _grfconfig; c != NULL; c = c->next) {
 			if (c->status == GCS_DISABLED || c->status == GCS_NOT_FOUND) continue;
 			if (stage > GLS_INIT && HasBit(c->flags, GCF_INIT_ONLY)) continue;
 
-			Subdirectory subdir = slot == file_index ? BASESET_DIR : NEWGRF_DIR;
+			Subdirectory subdir = slot < file_index + num_baseset ? BASESET_DIR : NEWGRF_DIR;
 			if (!FioCheckFileExists(c->filename, subdir)) {
 				DEBUG(grf, 0, "NewGRF file is missing '%s'; disabling", c->filename);
 				c->status = GCS_NOT_FOUND;
@@ -9305,6 +9267,16 @@ void LoadNewGRF(uint load_index, uint file_index)
 			}
 
 			if (stage == GLS_LABELSCAN) InitNewGRFFile(c);
+
+			if (!HasBit(c->flags, GCF_STATIC) && !HasBit(c->flags, GCF_SYSTEM)) {
+				if (num_non_static == NETWORK_MAX_GRF_COUNT) {
+					DEBUG(grf, 0, "'%s' is not loaded as the maximum number of non-static GRFs has been reached", c->filename);
+					c->status = GCS_DISABLED;
+					c->error  = new GRFError(STR_NEWGRF_ERROR_MSG_FATAL, STR_NEWGRF_ERROR_TOO_MANY_NEWGRFS_LOADED);
+					continue;
+				}
+				num_non_static++;
+			}
 			LoadNewGRFFile(c, slot++, stage, subdir);
 			if (stage == GLS_RESERVE) {
 				SetBit(c->flags, GCF_RESERVED);
@@ -9332,7 +9304,9 @@ void LoadNewGRF(uint load_index, uint file_index)
 	_date         = date;
 	_date_fract   = date_fract;
 	_tick_counter = tick_counter;
+	_tick_skip_counter = tick_skip_counter;
 	_display_opt  = display_opt;
+	SetScaledTickVariables();
 }
 
 /**

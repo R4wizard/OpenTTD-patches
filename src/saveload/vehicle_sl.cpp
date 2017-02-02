@@ -368,24 +368,6 @@ void AfterLoadVehicles(bool part_of_load)
 				v->SetServiceIntervalIsPercent(c->settings.vehicle.servint_ispercent);
 			}
 		}
-
-		if (SlXvIsFeatureMissing(XSLFI_VEHICLE_REPAIR_COST)) {
-			/* repair cost is value for new vehicles and each week +/256 part for old */
-			FOR_ALL_VEHICLES(v) {
-				if (!v->IsPrimaryVehicle()) continue;
-
-				v->repair_cost = v->value;
-				for (int w = 0; w < v->age / 7; w++, v->repair_cost += v->repair_cost >> 8);
-				//DEBUG(misc,0, "eid#%d, value=%lld, weeks=%d/%d, repair cost=%lld",
-				//	v->engine_type, (int64)v->value, v->age, v->max_age, (int64)v->repair_cost );
-
-				if (v->age > v->max_age) {
-					Date weeks = (v->age - v->max_age) / 7;
-					for (int w = 0; w < weeks; w++, v->repair_cost += v->repair_cost >> 8);
-					//DEBUG(misc,0, "OLD: value=%lld, weeks=%d, repair cost=%lld", (int64)v->value, weeks, (int64)v->repair_cost );
-				}
-			}
-		}
 	}
 
 	CheckValidVehicles();
@@ -456,21 +438,21 @@ void AfterLoadVehicles(bool part_of_load)
 
 			case VEH_TRAIN:
 			case VEH_SHIP:
-				v->cur_image = v->GetImage(v->direction, EIT_ON_MAP);
+				v->GetImage(v->direction, EIT_ON_MAP, &v->sprite_seq);
 				break;
 
 			case VEH_AIRCRAFT:
 				if (Aircraft::From(v)->IsNormalAircraft()) {
-					v->cur_image = v->GetImage(v->direction, EIT_ON_MAP);
+					v->GetImage(v->direction, EIT_ON_MAP, &v->sprite_seq);
 
-					/* The plane's shadow will have the same image as the plane */
+					/* The plane's shadow will have the same image as the plane, but no colour */
 					Vehicle *shadow = v->Next();
-					shadow->cur_image = v->cur_image;
+					shadow->sprite_seq.CopyWithoutPalette(v->sprite_seq);
 
 					/* In the case of a helicopter we will update the rotor sprites */
 					if (v->subtype == AIR_HELICOPTER) {
 						Vehicle *rotor = shadow->Next();
-						rotor->cur_image = GetRotorImage(Aircraft::From(v), EIT_ON_MAP);
+						GetRotorImage(Aircraft::From(v), EIT_ON_MAP, &rotor->sprite_seq);
 					}
 
 					UpdateAircraftCache(Aircraft::From(v), true);
@@ -639,7 +621,7 @@ const SaveLoad *GetVehicleDescription(VehicleType vt)
 		     SLE_VAR(Vehicle, cargo_cap,             SLE_UINT16),
 		 SLE_CONDVAR(Vehicle, refit_cap,             SLE_UINT16,                 182, SL_MAX_VERSION),
 		SLEG_CONDVAR(         _cargo_count,          SLE_UINT16,                   0,  67),
-		 SLE_CONDLST(Vehicle, cargo.packets,         REF_CARGO_PACKET,            68, SL_MAX_VERSION),
+		 SLE_CONDDEQ(Vehicle, cargo.packets,         REF_CARGO_PACKET,            68, SL_MAX_VERSION),
 		 SLE_CONDARR(Vehicle, cargo.action_counts,   SLE_UINT, VehicleCargoList::NUM_MOVE_TO_ACTION, 181, SL_MAX_VERSION),
 		 SLE_CONDVAR(Vehicle, cargo_age_counter,     SLE_UINT16,                 162, SL_MAX_VERSION),
 
@@ -673,6 +655,7 @@ const SaveLoad *GetVehicleDescription(VehicleType vt)
 		 SLE_CONDVAR(Vehicle, current_order.travel_time,   SLE_UINT16,            67, SL_MAX_VERSION),
 		 SLE_CONDVAR(Vehicle, current_order.max_speed,     SLE_UINT16,           174, SL_MAX_VERSION),
 		 SLE_CONDVAR(Vehicle, timetable_start,       SLE_INT32,                  129, SL_MAX_VERSION),
+		SLE_CONDVAR_X(Vehicle, timetable_start_subticks,   SLE_UINT16,             0, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_TIMETABLES_START_TICKS, 2)),
 
 		 SLE_CONDREF(Vehicle, orders,                REF_ORDER,                    0, 104),
 		 SLE_CONDREF(Vehicle, orders,                REF_ORDERLIST,              105, SL_MAX_VERSION),
@@ -713,7 +696,7 @@ const SaveLoad *GetVehicleDescription(VehicleType vt)
 		SLEG_CONDVAR(         _cargo_loaded_at_xy,   SLE_UINT32,                  51,  67),
 		 SLE_CONDVAR(Vehicle, value,                 SLE_FILE_I32 | SLE_VAR_I64,   0,  64),
 		 SLE_CONDVAR(Vehicle, value,                 SLE_INT64,                   65, SL_MAX_VERSION),
-		SLE_CONDVAR_X(Vehicle, repair_cost,          SLE_INT64,                   0, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_VEHICLE_REPAIR_COST)),
+		SLE_CONDNULL_X(8,                                                          0, SL_MAX_VERSION, SlXvFeatureTest(XSLFTO_AND, XSLFI_VEHICLE_REPAIR_COST, 1, 1)),
 
 		 SLE_CONDVAR(Vehicle, random_bits,           SLE_UINT8,                    2, SL_MAX_VERSION),
 		 SLE_CONDVAR(Vehicle, waiting_triggers,      SLE_UINT8,                    2, SL_MAX_VERSION),
@@ -838,7 +821,7 @@ const SaveLoad *GetVehicleDescription(VehicleType vt)
 		 SLE_CONDVAR(Vehicle, z_pos,                 SLE_FILE_U8  | SLE_VAR_I32,   0, 163),
 		 SLE_CONDVAR(Vehicle, z_pos,                 SLE_INT32,                  164, SL_MAX_VERSION),
 
-		     SLE_VAR(Vehicle, cur_image,             SLE_FILE_U16 | SLE_VAR_U32),
+		     SLE_VAR(Vehicle, sprite_seq.seq[0].sprite, SLE_FILE_U16 | SLE_VAR_U32),
 		SLE_CONDNULL(5,                                                            0,  57),
 		     SLE_VAR(Vehicle, progress,              SLE_UINT8),
 		     SLE_VAR(Vehicle, vehstatus,             SLE_UINT8),
@@ -878,7 +861,7 @@ const SaveLoad *GetVehicleDescription(VehicleType vt)
 		 SLE_CONDVAR(Vehicle, current_order.dest,    SLE_FILE_U8 | SLE_VAR_U16,    0,   4),
 		 SLE_CONDVAR(Vehicle, current_order.dest,    SLE_UINT16,                   5, SL_MAX_VERSION),
 
-		     SLE_VAR(Vehicle, cur_image,             SLE_FILE_U16 | SLE_VAR_U32),
+		     SLE_VAR(Vehicle, sprite_seq.seq[0].sprite, SLE_FILE_U16 | SLE_VAR_U32),
 		 SLE_CONDVAR(Vehicle, age,                   SLE_FILE_U16 | SLE_VAR_I32,   0,  30),
 		 SLE_CONDVAR(Vehicle, age,                   SLE_INT32,                   31, SL_MAX_VERSION),
 		     SLE_VAR(Vehicle, tick_counter,          SLE_UINT8),
@@ -977,6 +960,33 @@ static void Ptrs_VEHS()
 	}
 }
 
+const SaveLoad *GetOrderExtraInfoDescription();
+
+void Save_VEOX()
+{
+	/* save extended order info for vehicle current order */
+	Vehicle *v;
+	FOR_ALL_VEHICLES(v) {
+		if (v->current_order.extra) {
+			SlSetArrayIndex(v->index);
+			SlObject(v->current_order.extra.get(), GetOrderExtraInfoDescription());
+		}
+	}
+}
+
+void Load_VEOX()
+{
+	/* load extended order info for vehicle current order */
+	int index;
+	while ((index = SlIterateArray()) != -1) {
+		Vehicle *v = Vehicle::GetIfValid(index);
+		assert(v != NULL);
+		v->current_order.AllocExtraInfo();
+		SlObject(v->current_order.extra.get(), GetOrderExtraInfoDescription());
+	}
+}
+
 extern const ChunkHandler _veh_chunk_handlers[] = {
-	{ 'VEHS', Save_VEHS, Load_VEHS, Ptrs_VEHS, NULL, CH_SPARSE_ARRAY | CH_LAST},
+	{ 'VEHS', Save_VEHS, Load_VEHS, Ptrs_VEHS, NULL, CH_SPARSE_ARRAY},
+	{ 'VEOX', Save_VEOX, Load_VEOX, NULL,      NULL, CH_SPARSE_ARRAY | CH_LAST},
 };

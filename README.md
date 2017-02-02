@@ -1,4 +1,4 @@
-## JGR's Patchpack version 0.13.0
+## JGR's Patchpack version 0.16.1
 
 This is a collection of patches applied to [OpenTTD](http://www.openttd.org/)
 
@@ -14,7 +14,7 @@ section "Licensing" in readme.txt for details.
 
 * * *
 
-See readme.txt for the original OpenTTD readme.
+See [readme.txt](readme.txt) for the original OpenTTD readme.
 
 The thread for this patchpack can be found [here](http://www.tt-forums.net/viewtopic.php?f=33&t=73469).
 
@@ -45,7 +45,8 @@ See [jgrpp-changelog.md](jgrpp-changelog.md) for changelog.
   * Fixed departure boards with orders with timetabled 0 travel times, e.g. those with depot service orders.  
   * Made modifications to work with day length greater than 1.
 
-* Town cargo generation factor: [imported](http://www.tt-forums.net/viewtopic.php?t=46399)
+* Town cargo generation factor: [imported](http://www.tt-forums.net/viewtopic.php?t=46399)  
+  * Allow factor to be more finely adjusted in 0.1 increments. (added in v0.16.0)
 
 * Vehicles visible in tunnels (transparency setting): [imported](http://dev.openttdcoop.org/projects/clientpatches/repository/changes/VehicelsInTunnels.diff)
 
@@ -68,10 +69,12 @@ See [jgrpp-changelog.md](jgrpp-changelog.md) for changelog.
 
 * Automated timetables and separation: [imported](http://www.tt-forums.net/viewtopic.php?f=33&t=46391)  
   * Auto timetabling: Bias timetable adjustment to favour negative adjustments; this is to avoid positive feedback between congestion delays and increased timetable length. Reduce jam detection threshold.  
-  * Auto separation: Fix handling of non-station orders (e.g. waypoints and depots). Add a company setting to scale vehicle lateness adjustments. No longer set vehicle lateness to 0 if separation fails, instead leave it as it was.  
-  * Timetable GUI: Allow clearing of timetable time fields which are at 0. Allow explicitly setting timetable time fields to 0 without clearing them.  
-  * Add a company setting to enable automatic timetabling for new vehicles.  
-  * Allow changing/clearing the timetabled waiting time and max speed of all of a vehicle's orders at once.
+  * Auto separation: Fix handling of non-station orders (e.g. waypoints and depots). Change to a per-vehicle setting. Add a company setting to scale vehicle lateness adjustments. No longer set vehicle lateness to 0 if separation fails, instead leave it as it was.  
+  * Timetable GUI: Allow clearing of timetable time fields which are at 0. Allow explicitly setting timetable time fields to 0 without clearing them.
+  * Add company settings to enable automatic timetabling or separation for new vehicles.  
+  * Allow changing/clearing the timetabled waiting time and max speed of all of a vehicle's orders at once.  
+  * Add client setting to show the remainder ticks in timetable, after dividing to days or minutes.  
+  * Add a company setting to control the number of ticks used in auto-fill timetable rounding.
 
 * Vehicle repair cost: [imported](http://www.tt-forums.net/viewtopic.php?f=33&t=45642)
 
@@ -104,7 +107,7 @@ See [jgrpp-changelog.md](jgrpp-changelog.md) for changelog.
 * More conditional orders: [imported](http://www.tt-forums.net/viewtopic.php?f=33&t=38317) (added in v0.3.0)
 
 * Include the train length and group name in the vehicle details window (added in v0.3.0)  
-  This are each controlled by a setting (on by default).
+  These are each controlled by a setting (on by default).
 
 * Pause the game when cargo dest link graph jobs lag (added in v0.4.0)  
   Previously if a cargo dest link graph update job took longer than permitted, the game would block until it completed, preventing all user interaction.  
@@ -150,6 +153,16 @@ See [jgrpp-changelog.md](jgrpp-changelog.md) for changelog.
 
 * Increase number of available rail track types from 16 to 32 [imported](http://www.tt-forums.net/viewtopic.php?f=33&t=74365) (added in v0.13.0)
 
+* Cargo type orders, this allows order load/unload types to be set per cargo type [imported](https://www.tt-forums.net/viewtopic.php?p=1047749) (added in v0.15.0)  
+  This has been modified so that cargo dest can follow orders with different load/unload types.
+
+* Random town road reconstruction [imported](https://www.tt-forums.net/viewtopic.php?f=33&t=36438) (added in v0.15.0)  
+  This has been modified to change the setting scale. This defaults to off.
+
+* When building tunnels, open new viewports at the far end of the tunnel [imported](https://www.tt-forums.net/viewtopic.php?f=33&t=72639) (added in v0.15.0)
+
+* Add a setting to increase the station catchment radius (added in v0.16.0)
+
 * Performance improvements  
   * Improve dedicated server performance. Up to approximately 2.5x faster. (added in v0.8.1)  
   * Improve cargodest link graph calculation performance. Up to approximately 33% faster. (added in v0.8.1)  
@@ -165,8 +178,11 @@ See [jgrpp-changelog.md](jgrpp-changelog.md) for changelog.
     savegames from the [Spring 2013 Patch Pack](http://www.tt-forums.net/viewtopic.php?f=33&t=66892) v2.0, v2.1, v2.2 (subject to caveats, see below).
 
 * Miscellaneous  
-  * Various improvements to the crash logger. (added in v0.5.0, v0.12.0, v0.12.1)  
-  * Label threads with a descriptive name on supported Unixy platforms. (added in v0.8.1)
+  * Various improvements to the crash logger.  
+  * Label threads with a descriptive name on supported Unixy platforms. (added in v0.8.1)  
+  * Adjust cargo dest link graph job scheduling algorithm to improve responsiveness. (added in v0.16.0)  
+  * Add hover tool-tips, and improve visual contrast of cargo labels, in cargo dest graph legend window. (added in v0.16.0)  
+  * Add shift-clicking on vehicle depot button to select specific depot. (added in v0.16.1)
 
 * Translations  
   * German (by Auge): including vehicle group info, vehicle details window, the zoning toolbar, and settings for improved breakdowns and adjacent level crossings.
@@ -189,3 +205,14 @@ Many features have two branches, the *feature* branches are just the raw feature
 There are not generally savegame compatible with anything else, except for loading of trunk savegame versions at or before the point where the branch diverged from trunk.  
 All other load attempts may result in undefined behaviour.  
 The *feature-sx* branches use the savegame framework in the *save_ext* branch.
+
+
+#### Compiler requirements
+
+As of v0.15.0, C++11 support is required.
+
+The minimum supported compiler versions are:
+* GCC: 4.7
+* clang: 3.3
+
+Sufficienty up-to-date versions of other compiler toolchains including MSVC and ICC should also work.

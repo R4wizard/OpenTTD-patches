@@ -138,7 +138,6 @@ CommandCost CmdBuildVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 	if (value.Succeeded() && flags & DC_EXEC) {
 		v->unitnumber = unit_num;
 		v->value      = value.GetCost();
-		v->repair_cost = value.GetCost();
 
 		InvalidateWindowData(WC_VEHICLE_DEPOT, v->tile);
 		InvalidateWindowClassesData(GetWindowClassForVehicleType(type), 0);
@@ -633,7 +632,7 @@ CommandCost CmdStartStopVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, 
 		if (v->IsStoppedInDepot() && (flags & DC_AUTOREPLACE) == 0) DeleteVehicleNews(p1, STR_NEWS_TRAIN_IS_WAITING + v->type);
 
 		v->ClearSeparation();
-		if (_settings_game.order.timetable_separation) ClrBit(v->vehicle_flags, VF_TIMETABLE_STARTED);
+		if (HasBit(v->vehicle_flags, VF_TIMETABLE_SEPARATION)) ClrBit(v->vehicle_flags, VF_TIMETABLE_STARTED);
 
 		v->vehstatus ^= VS_STOPPED;
 		if (v->type != VEH_TRAIN) v->cur_speed = 0; // trains can stop 'slowly'
@@ -663,7 +662,7 @@ CommandCost CmdMassStartStopVehicle(TileIndex tile, DoCommandFlag flags, uint32 
 	bool vehicle_list_window = HasBit(p1, 1);
 
 	VehicleListIdentifier vli;
-	if (!vli.Unpack(p2)) return CMD_ERROR;
+	if (!vli.UnpackIfValid(p2)) return CMD_ERROR;
 	if (!IsCompanyBuildableVehicleType(vli.vtype)) return CMD_ERROR;
 
 	if (vehicle_list_window) {
@@ -850,7 +849,7 @@ inline void SetupTemplateVehicleFromVirtual(TemplateVehicle *tmp, TemplateVehicl
 	tmp->max_te = gcache->cached_max_te / 1000;
 
 	tmp->spritenum = virt->spritenum;
-	tmp->cur_image = virt->GetImage(DIR_W, EIT_PURCHASE);
+	virt->GetImage(DIR_W, EIT_PURCHASE, &tmp->sprite_seq);
 	tmp->image_width = virt->GetDisplayImageWidth();
 }
 
@@ -1224,10 +1223,12 @@ CommandCost CmdDeleteTemplateVehicle(TileIndex tile, DoCommandFlag flags, uint32
 	bool should_execute = (flags & DC_EXEC) != 0;
 
 	if (should_execute) {
-		// Remove a corresponding template replacement if existing
-		TemplateReplacement *tr = GetTemplateReplacementByTemplateID(del->index);
-		if (tr != NULL) {
-			delete tr;
+		// Remove corresponding template replacements if existing
+		TemplateReplacement *tr;
+		FOR_ALL_TEMPLATE_REPLACEMENTS(tr) {
+			if (tr->Template() == del->index) {
+				delete tr;
+			}
 		}
 
 		delete del;
@@ -1519,8 +1520,8 @@ static CommandCost SendAllVehiclesToDepot(DoCommandFlag flags, bool service, con
  * @param flags for command type
  * @param p1 bitmask
  * - p1 0-20: bitvehicle ID to send to the depot
- * - p1 bits 25-8  - DEPOT_ flags (see vehicle_type.h)
- * @param p2 packed VehicleListIdentifier.
+ * - p1 bits 27-31  - DEPOT_ flags (see vehicle_type.h)
+ * @param p2 packed VehicleListIdentifier, or specific depot tile
  * @param text unused
  * @return the cost of this operation or an error
  */
@@ -1529,7 +1530,7 @@ CommandCost CmdSendVehicleToDepot(TileIndex tile, DoCommandFlag flags, uint32 p1
 	if (p1 & DEPOT_MASS_SEND) {
 		/* Mass goto depot requested */
 		VehicleListIdentifier vli;
-		if (!vli.Unpack(p2)) return CMD_ERROR;
+		if (!vli.UnpackIfValid(p2)) return CMD_ERROR;
 		return SendAllVehiclesToDepot(flags, (p1 & DEPOT_SERVICE) != 0, vli);
 	}
 
@@ -1537,7 +1538,7 @@ CommandCost CmdSendVehicleToDepot(TileIndex tile, DoCommandFlag flags, uint32 p1
 	if (v == NULL) return CMD_ERROR;
 	if (!v->IsPrimaryVehicle()) return CMD_ERROR;
 
-	return v->SendToDepot(flags, (DepotCommand)(p1 & DEPOT_COMMAND_MASK));
+	return v->SendToDepot(flags, (DepotCommand)(p1 & DEPOT_COMMAND_MASK), p2);
 }
 
 /**

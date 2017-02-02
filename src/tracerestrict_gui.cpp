@@ -37,11 +37,9 @@
 #include "cargotype.h"
 #include "sortlist_type.h"
 #include "group.h"
+#include "unit_conversion.h"
 #include "table/sprites.h"
 #include "toolbar_gui.h"
-
-extern uint ConvertSpeedToDisplaySpeed(uint speed);
-extern uint ConvertDisplaySpeedToSpeed(uint speed);
 
 /** Widget IDs */
 enum TraceRestrictWindowWidgets {
@@ -60,6 +58,7 @@ enum TraceRestrictWindowWidgets {
 	TR_WIDGET_CONDFLAGS,
 	TR_WIDGET_COMPARATOR,
 	TR_WIDGET_VALUE_INT,
+	TR_WIDGET_VALUE_DECIMAL,
 	TR_WIDGET_VALUE_DROPDOWN,
 	TR_WIDGET_VALUE_DEST,
 	TR_WIDGET_VALUE_SIGNAL,
@@ -95,6 +94,7 @@ enum PanelWidgets {
 
 	// Right
 	DPR_VALUE_INT = 0,
+	DPR_VALUE_DECIMAL,
 	DPR_VALUE_DROPDOWN,
 	DPR_VALUE_DEST,
 	DPR_VALUE_SIGNAL,
@@ -242,10 +242,27 @@ static StringID GetDropDownStringByValue(const TraceRestrictDropDownListSet *lis
 	return list_set->string_array[GetDropDownListIndexByValue(list_set, value, false)];
 }
 
+typedef uint TraceRestrictGuiItemType;
+
+static TraceRestrictGuiItemType GetItemGuiType(TraceRestrictItem item)
+{
+	TraceRestrictItemType type = GetTraceRestrictType(item);
+	if (IsTraceRestrictTypeAuxSubtype(type)) {
+		return type | (GetTraceRestrictAuxField(item) << 16);
+	} else {
+		return type;
+	}
+}
+
+static TraceRestrictItemType ItemTypeFromGuiType(TraceRestrictGuiItemType type)
+{
+	return static_cast<TraceRestrictItemType>(type & 0xFFFF);
+}
+
 /**
  * Return the appropriate type dropdown TraceRestrictDropDownListSet for the given item type @p type
  */
-static const TraceRestrictDropDownListSet *GetTypeDropDownListSet(TraceRestrictItemType type)
+static const TraceRestrictDropDownListSet *GetTypeDropDownListSet(TraceRestrictGuiItemType type)
 {
 	static const StringID str_action[] = {
 		STR_TRACE_RESTRICT_PF_DENY,
@@ -275,6 +292,11 @@ static const TraceRestrictDropDownListSet *GetTypeDropDownListSet(TraceRestrictI
 		STR_TRACE_RESTRICT_VARIABLE_PBS_ENTRY_SIGNAL,
 		STR_TRACE_RESTRICT_VARIABLE_TRAIN_GROUP,
 		STR_TRACE_RESTRICT_VARIABLE_TRAIN_OWNER,
+		STR_TRACE_RESTRICT_VARIABLE_TRAIN_WEIGHT,
+		STR_TRACE_RESTRICT_VARIABLE_TRAIN_POWER,
+		STR_TRACE_RESTRICT_VARIABLE_TRAIN_MAX_TE,
+		STR_TRACE_RESTRICT_VARIABLE_TRAIN_POWER_WEIGHT_RATIO,
+		STR_TRACE_RESTRICT_VARIABLE_TRAIN_MAX_TE_WEIGHT_RATIO,
 		STR_TRACE_RESTRICT_VARIABLE_UNDEFINED,
 		INVALID_STRING_ID,
 	};
@@ -289,13 +311,18 @@ static const TraceRestrictDropDownListSet *GetTypeDropDownListSet(TraceRestrictI
 		TRIT_COND_PBS_ENTRY_SIGNAL,
 		TRIT_COND_TRAIN_GROUP,
 		TRIT_COND_TRAIN_OWNER,
+		TRIT_COND_PHYS_PROP | (TRPPCAF_WEIGHT << 16),
+		TRIT_COND_PHYS_PROP | (TRPPCAF_POWER << 16),
+		TRIT_COND_PHYS_PROP | (TRPPCAF_MAX_TE << 16),
+		TRIT_COND_PHYS_RATIO | (TRPPRCAF_POWER_WEIGHT << 16),
+		TRIT_COND_PHYS_RATIO | (TRPPRCAF_MAX_TE_WEIGHT << 16),
 		TRIT_COND_UNDEFINED,
 	};
 	static const TraceRestrictDropDownListSet set_cond = {
 		str_cond, val_cond,
 	};
 
-	return IsTraceRestrictTypeConditional(type) ? &set_cond : &set_action;
+	return IsTraceRestrictTypeConditional(ItemTypeFromGuiType(type)) ? &set_cond : &set_action;
 }
 
 /**
@@ -382,8 +409,9 @@ static StringID GetCargoStringByID(CargoID cargo)
 /**
  * Get the StringID for a given item type @p type
  */
-static StringID GetTypeString(TraceRestrictItemType type)
+static StringID GetTypeString(TraceRestrictItem item)
 {
+	TraceRestrictGuiItemType type = GetItemGuiType(item);
 	return GetDropDownStringByValue(GetTypeDropDownListSet(type), type);
 }
 
@@ -450,6 +478,24 @@ static bool IsIntegerValueType(TraceRestrictValueType type)
 	switch (type) {
 		case TRVT_INT:
 		case TRVT_SPEED:
+		case TRVT_WEIGHT:
+		case TRVT_POWER:
+		case TRVT_FORCE:
+			return true;
+
+		default:
+			return false;
+	}
+}
+
+/**
+ * Return true if item type field @p type is a decimal value type
+ */
+static bool IsDecimalValueType(TraceRestrictValueType type)
+{
+	switch (type) {
+		case TRVT_POWER_WEIGHT_RATIO:
+		case TRVT_FORCE_WEIGHT_RATIO:
 			return true;
 
 		default:
@@ -471,8 +517,65 @@ static uint ConvertIntegerValue(TraceRestrictValueType type, uint in, bool to_di
 					? ConvertSpeedToDisplaySpeed(in) * 10 / 16
 					: ConvertDisplaySpeedToSpeed(in) * 16 / 10;
 
+		case TRVT_WEIGHT:
+			return to_display
+					? ConvertWeightToDisplayWeight(in)
+					: ConvertDisplayWeightToWeight(in);
+			break;
+
+		case TRVT_POWER:
+			return to_display
+					? ConvertPowerToDisplayPower(in)
+					: ConvertDisplayPowerToPower(in);
+			break;
+
+		case TRVT_FORCE:
+			return to_display
+					? ConvertForceToDisplayForce(in)
+					: ConvertDisplayForceToForce(in);
+			break;
+
 		case TRVT_PF_PENALTY:
 			return in;
+
+		default:
+			NOT_REACHED();
+			return 0;
+	}
+}
+
+/**
+ * Convert integer values to decimal display units
+ */
+static void ConvertValueToDecimal(TraceRestrictValueType type, uint in, int64 &value, int64 &decimal)
+{
+	switch (type) {
+		case TRVT_POWER_WEIGHT_RATIO:
+			ConvertPowerWeightRatioToDisplay(in, value, decimal);
+			break;
+
+		case TRVT_FORCE_WEIGHT_RATIO:
+			ConvertForceWeightRatioToDisplay(in, value, decimal);
+			break;
+
+		default:
+			NOT_REACHED();
+	}
+}
+
+/**
+ * Convert decimal (double) display units to integer values
+ */
+static uint ConvertDecimalToValue(TraceRestrictValueType type, double in)
+{
+	switch (type) {
+		case TRVT_POWER_WEIGHT_RATIO:
+			return ConvertDisplayToPowerWeightRatio(in);
+			break;
+
+		case TRVT_FORCE_WEIGHT_RATIO:
+			return ConvertDisplayToForceWeightRatio(in);
+			break;
 
 		default:
 			NOT_REACHED();
@@ -553,7 +656,7 @@ static void DrawInstructionStringConditionalCommon(TraceRestrictItem item, const
 {
 	assert(GetTraceRestrictCondFlags(item) <= TRCF_OR);
 	SetDParam(0, _program_cond_type[GetTraceRestrictCondFlags(item)]);
-	SetDParam(1, GetTypeString(GetTraceRestrictType(item)));
+	SetDParam(1, GetTypeString(item));
 	SetDParam(2, GetDropDownStringByValue(GetCondOpDropDownListSet(properties), GetTraceRestrictCondOp(item)));
 }
 
@@ -713,6 +816,31 @@ static void DrawInstructionString(const TraceRestrictProgram *prog, TraceRestric
 					}
 					break;
 				}
+
+				case TRVT_WEIGHT:
+					instruction_string = STR_TRACE_RESTRICT_CONDITIONAL_COMPARE_WEIGHT;
+					DrawInstructionStringConditionalIntegerCommon(item, properties);
+					break;
+
+				case TRVT_POWER:
+					instruction_string = STR_TRACE_RESTRICT_CONDITIONAL_COMPARE_POWER;
+					DrawInstructionStringConditionalIntegerCommon(item, properties);
+					break;
+
+				case TRVT_FORCE:
+					instruction_string = STR_TRACE_RESTRICT_CONDITIONAL_COMPARE_FORCE;
+					DrawInstructionStringConditionalIntegerCommon(item, properties);
+					break;
+
+				case TRVT_POWER_WEIGHT_RATIO:
+					instruction_string = STR_TRACE_RESTRICT_CONDITIONAL_COMPARE_POWER_WEIGHT_RATIO;
+					DrawInstructionStringConditionalIntegerCommon(item, properties);
+					break;
+
+				case TRVT_FORCE_WEIGHT_RATIO:
+					instruction_string = STR_TRACE_RESTRICT_CONDITIONAL_COMPARE_FORCE_WEIGHT_RATIO;
+					DrawInstructionStringConditionalIntegerCommon(item, properties);
+					break;
 
 				default:
 					NOT_REACHED();
@@ -925,7 +1053,7 @@ public:
 			case TR_WIDGET_TYPE_COND:
 			case TR_WIDGET_TYPE_NONCOND: {
 				TraceRestrictItem item = this->GetSelected();
-				TraceRestrictItemType type = GetTraceRestrictType(item);
+				TraceRestrictGuiItemType type = GetItemGuiType(item);
 
 				if (type != TRIT_NULL) {
 					this->ShowDropDownListWithValue(GetTypeDropDownListSet(type), type, false, widget, 0, 0, 0);
@@ -948,6 +1076,22 @@ public:
 				if (IsIntegerValueType(type)) {
 					SetDParam(0, ConvertIntegerValue(type, GetTraceRestrictValue(item), true));
 					ShowQueryString(STR_JUST_INT, STR_TRACE_RESTRICT_VALUE_CAPTION, 10, this, CS_NUMERAL, QSF_NONE);
+				}
+				break;
+			}
+
+			case TR_WIDGET_VALUE_DECIMAL: {
+				TraceRestrictItem item = this->GetSelected();
+				TraceRestrictValueType type = GetTraceRestrictTypeProperties(item).value_type;
+				if (IsDecimalValueType(type)) {
+					int64 value, decimal;
+					ConvertValueToDecimal(type, GetTraceRestrictValue(item), value, decimal);
+					SetDParam(0, value);
+					SetDParam(1, decimal);
+					char *saved = _settings_game.locale.digit_group_separator;
+					_settings_game.locale.digit_group_separator = const_cast<char*>("");
+					ShowQueryString(STR_JUST_DECIMAL, STR_TRACE_RESTRICT_VALUE_CAPTION, 16, this, CS_NUMERAL_DECIMAL, QSF_NONE);
+					_settings_game.locale.digit_group_separator = saved;
 				}
 				break;
 			}
@@ -1035,19 +1179,35 @@ public:
 
 		TraceRestrictItem item = GetSelected();
 		TraceRestrictValueType type = GetTraceRestrictTypeProperties(item).value_type;
-		if (!IsIntegerValueType(type) && type != TRVT_PF_PENALTY) {
-			return;
-		}
+		uint value;
 
-		uint value = ConvertIntegerValue(type, atoi(str), false);
-		if (value >= (1 << TRIFA_VALUE_COUNT)) {
-			SetDParam(0, ConvertIntegerValue(type, (1 << TRIFA_VALUE_COUNT) - 1, true));
-			ShowErrorMessage(STR_TRACE_RESTRICT_ERROR_VALUE_TOO_LARGE, STR_EMPTY, WL_INFO);
-			return;
-		}
+		if (IsIntegerValueType(type) || type == TRVT_PF_PENALTY) {
+			value = ConvertIntegerValue(type, atoi(str), false);
+			if (value >= (1 << TRIFA_VALUE_COUNT)) {
+				SetDParam(0, ConvertIntegerValue(type, (1 << TRIFA_VALUE_COUNT) - 1, true));
+				SetDParam(1, 0);
+				ShowErrorMessage(STR_TRACE_RESTRICT_ERROR_VALUE_TOO_LARGE, STR_EMPTY, WL_INFO);
+				return;
+			}
 
-		if (type == TRVT_PF_PENALTY) {
-			SetTraceRestrictAuxField(item, TRPPAF_VALUE);
+			if (type == TRVT_PF_PENALTY) {
+				SetTraceRestrictAuxField(item, TRPPAF_VALUE);
+			}
+		} else if (IsDecimalValueType(type)) {
+			char tmp_buffer[32];
+			strecpy(tmp_buffer, str, lastof(tmp_buffer));
+			str_replace_wchar(tmp_buffer, lastof(tmp_buffer), GetDecimalSeparatorChar(), '.');
+			value = ConvertDecimalToValue(type, atof(tmp_buffer));
+			if (value >= (1 << TRIFA_VALUE_COUNT)) {
+				int64 value, decimal;
+				ConvertValueToDecimal(type, (1 << TRIFA_VALUE_COUNT) - 1, value, decimal);
+				SetDParam(0, value);
+				SetDParam(1, decimal);
+				ShowErrorMessage(STR_TRACE_RESTRICT_ERROR_VALUE_TOO_LARGE, STR_EMPTY, WL_INFO);
+				return;
+			}
+		} else {
+			return;
 		}
 
 		SetTraceRestrictValue(item, value);
@@ -1109,11 +1269,8 @@ public:
 
 			case TR_WIDGET_TYPE_COND:
 			case TR_WIDGET_TYPE_NONCOND: {
-				SetTraceRestrictTypeAndNormalise(item, static_cast<TraceRestrictItemType>(value));
-				if (GetTraceRestrictType(item) == TRIT_COND_LAST_STATION && GetTraceRestrictAuxField(item) != TROCAF_STATION) {
-					// if changing type from another order type to last visited station, reset value if not currently a station
-					SetTraceRestrictValueDefault(item, TRVT_ORDER);
-				}
+				SetTraceRestrictTypeAndNormalise(item, static_cast<TraceRestrictItemType>(value & 0xFFFF), value >> 16);
+
 				TraceRestrictDoCommandP(this->tile, this->track, TRDCT_MODIFY_ITEM, this->selected_instruction - 1, item, STR_TRACE_RESTRICT_ERROR_CAN_T_MODIFY_ITEM);
 				break;
 			}
@@ -1282,19 +1439,23 @@ public:
 		TraceRestrictItem item = GetSelected();
 		if (GetTraceRestrictTypeProperties(item).value_type != TRVT_TILE_INDEX) return;
 
-		if (!IsPlainRailTile(tile)) {
-			ShowErrorMessage(error_message, STR_ERROR_THERE_IS_NO_RAILROAD_TRACK, WL_INFO);
-			return;
-		}
-
-		if (GetPresentSignals(tile) == 0) {
-			ShowErrorMessage(error_message, STR_ERROR_THERE_ARE_NO_SIGNALS, WL_INFO);
-			return;
-		}
-
 		if (!IsTileOwner(tile, _local_company)) {
 			ShowErrorMessage(error_message, STR_ERROR_AREA_IS_OWNED_BY_ANOTHER, WL_INFO);
 			return;
+		}
+
+		if (IsRailDepotTile(tile)) {
+			// OK
+		} else {
+			if (!IsPlainRailTile(tile)) {
+				ShowErrorMessage(error_message, STR_ERROR_THERE_IS_NO_RAILROAD_TRACK, WL_INFO);
+				return;
+			}
+
+			if (GetPresentSignals(tile) == 0) {
+				ShowErrorMessage(error_message, STR_ERROR_THERE_ARE_NO_SIGNALS, WL_INFO);
+				return;
+			}
 		}
 
 		TraceRestrictDoCommandP(this->tile, this->track, TRDCT_MODIFY_DUAL_ITEM, this->selected_instruction - 1, tile, STR_TRACE_RESTRICT_ERROR_CAN_T_MODIFY_ITEM);
@@ -1379,6 +1540,20 @@ public:
 				TraceRestrictValueType type = GetTraceRestrictTypeProperties(item).value_type;
 				if (IsIntegerValueType(type)) {
 					SetDParam(0, ConvertIntegerValue(type, GetTraceRestrictValue(item), true));
+				}
+				break;
+			}
+
+			case TR_WIDGET_VALUE_DECIMAL: {
+				SetDParam(0, 0);
+				SetDParam(1, 0);
+				TraceRestrictItem item = this->GetSelected();
+				TraceRestrictValueType type = GetTraceRestrictTypeProperties(item).value_type;
+				if (IsDecimalValueType(type)) {
+					int64 value, decimal;
+					ConvertValueToDecimal(type, GetTraceRestrictValue(item), value, decimal);
+					SetDParam(0, value);
+					SetDParam(1, decimal);
 				}
 				break;
 			}
@@ -1542,6 +1717,7 @@ private:
 		this->RaiseWidget(TR_WIDGET_CONDFLAGS);
 		this->RaiseWidget(TR_WIDGET_COMPARATOR);
 		this->RaiseWidget(TR_WIDGET_VALUE_INT);
+		this->RaiseWidget(TR_WIDGET_VALUE_DECIMAL);
 		this->RaiseWidget(TR_WIDGET_VALUE_DROPDOWN);
 		this->RaiseWidget(TR_WIDGET_VALUE_DEST);
 		this->RaiseWidget(TR_WIDGET_VALUE_SIGNAL);
@@ -1557,6 +1733,7 @@ private:
 		this->DisableWidget(TR_WIDGET_CONDFLAGS);
 		this->DisableWidget(TR_WIDGET_COMPARATOR);
 		this->DisableWidget(TR_WIDGET_VALUE_INT);
+		this->DisableWidget(TR_WIDGET_VALUE_DECIMAL);
 		this->DisableWidget(TR_WIDGET_VALUE_DROPDOWN);
 		this->DisableWidget(TR_WIDGET_VALUE_DEST);
 		this->DisableWidget(TR_WIDGET_VALUE_SIGNAL);
@@ -1675,7 +1852,7 @@ private:
 				this->EnableWidget(type_widget);
 
 				this->GetWidget<NWidgetCore>(type_widget)->widget_data =
-						GetTypeString(GetTraceRestrictType(item));
+						GetTypeString(item);
 
 				if (properties.cond_type == TRCOT_BINARY || properties.cond_type == TRCOT_ALL) {
 					middle_sel->SetDisplayedPlane(DPM_COMPARATOR);
@@ -1692,6 +1869,9 @@ private:
 				if (IsIntegerValueType(properties.value_type)) {
 					right_sel->SetDisplayedPlane(DPR_VALUE_INT);
 					this->EnableWidget(TR_WIDGET_VALUE_INT);
+				} else if(IsDecimalValueType(properties.value_type)) {
+					right_sel->SetDisplayedPlane(DPR_VALUE_DECIMAL);
+					this->EnableWidget(TR_WIDGET_VALUE_DECIMAL);
 				} else {
 					switch (properties.value_type) {
 						case TRVT_DENY:
@@ -1904,7 +2084,8 @@ static const NWidgetPart _nested_program_widgets[] = {
 
 	// Program display
 	NWidget(NWID_HORIZONTAL),
-		NWidget(WWT_PANEL, COLOUR_GREY, TR_WIDGET_INSTRUCTION_LIST), SetMinimalSize(372, 62), SetDataTip(0x0, STR_TRACE_RESTRICT_INSTRUCTION_LIST_TOOLTIP), SetResize(1, 1), EndContainer(),
+		NWidget(WWT_PANEL, COLOUR_GREY, TR_WIDGET_INSTRUCTION_LIST), SetMinimalSize(372, 62), SetDataTip(0x0, STR_TRACE_RESTRICT_INSTRUCTION_LIST_TOOLTIP),
+				SetResize(1, 1), SetScrollbar(TR_WIDGET_SCROLLBAR), EndContainer(),
 		NWidget(NWID_VSCROLLBAR, COLOUR_GREY, TR_WIDGET_SCROLLBAR),
 	EndContainer(),
 
@@ -1934,6 +2115,8 @@ static const NWidgetPart _nested_program_widgets[] = {
 			NWidget(NWID_SELECTION, INVALID_COLOUR, TR_WIDGET_SEL_TOP_RIGHT),
 				NWidget(WWT_TEXTBTN, COLOUR_GREY, TR_WIDGET_VALUE_INT), SetMinimalSize(124, 12), SetFill(1, 0),
 														SetDataTip(STR_BLACK_COMMA, STR_TRACE_RESTRICT_COND_VALUE_TOOLTIP), SetResize(1, 0),
+				NWidget(WWT_TEXTBTN, COLOUR_GREY, TR_WIDGET_VALUE_DECIMAL), SetMinimalSize(124, 12), SetFill(1, 0),
+														SetDataTip(STR_BLACK_DECIMAL, STR_TRACE_RESTRICT_COND_VALUE_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_DROPDOWN, COLOUR_GREY, TR_WIDGET_VALUE_DROPDOWN), SetMinimalSize(124, 12), SetFill(1, 0),
 														SetDataTip(STR_NULL, STR_TRACE_RESTRICT_COND_VALUE_TOOLTIP), SetResize(1, 0),
 				NWidget(WWT_TEXTBTN, COLOUR_GREY, TR_WIDGET_VALUE_DEST), SetMinimalSize(124, 12), SetFill(1, 0),

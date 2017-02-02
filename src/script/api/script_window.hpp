@@ -290,6 +290,18 @@ public:
 		WC_VEHICLE_ORDERS                            = ::WC_VEHICLE_ORDERS,
 
 		/**
+		 * Vehicle cargo type load orders; %Window numbers:
+		 *   - #VehicleID = #CargoTypeOrdersWidgets
+		 */
+		WC_VEHICLE_CARGO_TYPE_LOAD_ORDERS = ::WC_VEHICLE_CARGO_TYPE_LOAD_ORDERS,
+
+		/**
+		 * Vehicle cargo type unload orders; %Window numbers:
+		 *   - #VehicleID = #CargoTypeOrdersWidgets
+		 */
+		WC_VEHICLE_CARGO_TYPE_UNLOAD_ORDERS = ::WC_VEHICLE_CARGO_TYPE_UNLOAD_ORDERS,
+
+		/**
 		 * Replace vehicle window; %Window numbers:
 		 *   - #VehicleType = #ReplaceVehicleWidgets
 		 */
@@ -954,10 +966,8 @@ public:
 		WID_RV_STOP_REPLACE                          = ::WID_RV_STOP_REPLACE,                          ///< Stop Replacing button.
 
 		/* Train only widgets. */
-		WID_RV_TRAIN_ENGINEWAGON_TOGGLE              = ::WID_RV_TRAIN_ENGINEWAGON_TOGGLE,              ///< Button to toggle engines and/or wagons.
-		WID_RV_TRAIN_FLUFF_LEFT                      = ::WID_RV_TRAIN_FLUFF_LEFT,                      ///< The fluff on the left.
+		WID_RV_TRAIN_ENGINEWAGON_DROPDOWN            = ::WID_RV_TRAIN_ENGINEWAGON_DROPDOWN,            ///< Dropdown to select engines and/or wagons.
 		WID_RV_TRAIN_RAILTYPE_DROPDOWN               = ::WID_RV_TRAIN_RAILTYPE_DROPDOWN,               ///< Dropdown menu about the railtype.
-		WID_RV_TRAIN_FLUFF_RIGHT                     = ::WID_RV_TRAIN_FLUFF_RIGHT,                     ///< The fluff on the right.
 		WID_RV_TRAIN_WAGONREMOVE_TOGGLE              = ::WID_RV_TRAIN_WAGONREMOVE_TOGGLE,              ///< Button to toggle removing wagons.
 	};
 
@@ -1511,8 +1521,10 @@ public:
 		WID_SGI_ARCTIC_LANDSCAPE                     = ::WID_SGI_ARCTIC_LANDSCAPE,                     ///< Select arctic landscape button.
 		WID_SGI_TROPIC_LANDSCAPE                     = ::WID_SGI_TROPIC_LANDSCAPE,                     ///< Select tropic landscape button.
 		WID_SGI_TOYLAND_LANDSCAPE                    = ::WID_SGI_TOYLAND_LANDSCAPE,                    ///< Select toyland landscape button.
+		WID_SGI_BASESET_SELECTION                    = ::WID_SGI_BASESET_SELECTION,                    ///< Baseset selection.
+		WID_SGI_BASESET                              = ::WID_SGI_BASESET,                              ///< Baseset errors.
 		WID_SGI_TRANSLATION_SELECTION                = ::WID_SGI_TRANSLATION_SELECTION,                ///< Translation selection.
-		WID_SGI_TRANSLATION                          = ::WID_SGI_TRANSLATION,                          ///< Translation.
+		WID_SGI_TRANSLATION                          = ::WID_SGI_TRANSLATION,                          ///< Translation errors.
 		WID_SGI_OPTIONS                              = ::WID_SGI_OPTIONS,                              ///< Options button.
 		WID_SGI_HIGHSCORE                            = ::WID_SGI_HIGHSCORE,                            ///< Highscore button.
 		WID_SGI_SETTINGS_OPTIONS                     = ::WID_SGI_SETTINGS_OPTIONS,                     ///< Settings button.
@@ -1957,6 +1969,21 @@ public:
 		WID_O_SHARED_ORDER_LIST                      = ::WID_O_SHARED_ORDER_LIST,                      ///< Open list of shared vehicles.
 	};
 
+	/** Widgets of the #CargoTypeOrdersWindow class. */
+	enum CargoTypeOrdersWidgets {
+		WID_CTO_CAPTION                      = ::WID_CTO_CAPTION,                      ///< Caption of the window.
+		WID_CTO_HEADER                       = ::WID_CTO_HEADER,                       ///< Window header.
+		WID_CTO_CLOSEBTN                     = ::WID_CTO_CLOSEBTN,                     ///< Close button.
+		WID_CTO_SET_TO_ALL_LABEL             = ::WID_CTO_SET_TO_ALL_LABEL,             ///< 'Set to all' dropdown label
+		WID_CTO_SET_TO_ALL_DROPDOWN          = ::WID_CTO_SET_TO_ALL_DROPDOWN,          ///< 'Set to all' dropdown
+		WID_CTO_CARGO_ROW_FIRST              = ::WID_CTO_CARGO_ROW_FIRST,              ///< First cargo type order row.
+		WID_CTO_CARGO_ROW_LAST               = ::WID_CTO_CARGO_ROW_LAST,               ///< Last cargo type order row.
+		WID_CTO_CARGO_LABEL_FIRST            = ::WID_CTO_CARGO_LABEL_FIRST,            ///< First cargo label.
+		WID_CTO_CARGO_LABEL_LAST             = ::WID_CTO_CARGO_LABEL_LAST,             ///< Last cargo label.
+		WID_CTO_CARGO_DROPDOWN_FIRST         = ::WID_CTO_CARGO_DROPDOWN_FIRST,         ///< First order dropdown.
+		WID_CTO_CARGO_DROPDOWN_LAST          = ::WID_CTO_CARGO_DROPDOWN_LAST,          ///< Last order dropdown.
+	};
+
 	/* automatically generated from ../../widgets/osk_widget.h */
 	/** Widgets of the #OskWindow class. */
 	enum OnScreenKeyboardWidgets {
@@ -2344,6 +2371,7 @@ public:
 		WID_ETT_PLACE_ROCKS                          = ::WID_ETT_PLACE_ROCKS,                          ///< Place rocks button.
 		WID_ETT_PLACE_DESERT                         = ::WID_ETT_PLACE_DESERT,                         ///< Place desert button (in tropical climate).
 		WID_ETT_PLACE_OBJECT                         = ::WID_ETT_PLACE_OBJECT,                         ///< Place transmitter button.
+		WID_ETT_PLACE_HOUSE                          = ::WID_ETT_PLACE_HOUSE,                          ///< Place house button.
 		WID_ETT_BUTTONS_END                          = ::WID_ETT_BUTTONS_END,                          ///< End of pushable buttons.
 		WID_ETT_INCREASE_SIZE                        = ::WID_ETT_INCREASE_SIZE,                        ///< Upwards arrow button to increase terraforming size.
 		WID_ETT_DECREASE_SIZE                        = ::WID_ETT_DECREASE_SIZE,                        ///< Downwards arrow button to decrease terraforming size.
@@ -2398,6 +2426,7 @@ public:
 		WID_TN_AIRCRAFTS                             = ::WID_TN_AIRCRAFTS,                             ///< Aircraft menu.
 		WID_TN_ZOOM_IN                               = ::WID_TN_ZOOM_IN,                               ///< Zoom in the main viewport.
 		WID_TN_ZOOM_OUT                              = ::WID_TN_ZOOM_OUT,                              ///< Zoom out the main viewport.
+		WID_TN_BUILDING_TOOLS_START                  = ::WID_TN_BUILDING_TOOLS_START,                  ///< Helper for the offset of the building tools
 		WID_TN_RAILS                                 = ::WID_TN_RAILS,                                 ///< Rail building menu.
 		WID_TN_ROADS                                 = ::WID_TN_ROADS,                                 ///< Road building menu.
 		WID_TN_WATER                                 = ::WID_TN_WATER,                                 ///< Water building toolbar.
@@ -2488,13 +2517,6 @@ public:
 		WID_TF_LAYOUT_RANDOM                         = ::WID_TF_LAYOUT_RANDOM,                         ///< Selection for a randomly chosen town layout.
 	};
 
-	/** Widgets of the #SelectTownWindow class. */
-	enum SelectTownWidgets {
-		WID_ST_CAPTION                               = ::WID_ST_CAPTION,                               ///< Caption of the window.
-		WID_ST_PANEL                                 = ::WID_ST_PANEL,                                 ///< Main panel.
-		WID_ST_SCROLLBAR                             = ::WID_ST_SCROLLBAR,                             ///< Scrollbar of the panel.
-	};
-
 	/** Widgets of the #HousePickerWindow class. */
 	enum HousePickerWidgets {
 		WID_HP_CAPTION                               = ::WID_HP_CAPTION,
@@ -2505,10 +2527,6 @@ public:
 		WID_HP_HOUSE_SELECT_SCROLL                   = ::WID_HP_HOUSE_SELECT_SCROLL,                   ///< Scrollbar associated with the house matrix.
 		WID_HP_HOUSE_SELECT                          = ::WID_HP_HOUSE_SELECT,                          ///< Panels with house images in the house matrix.
 		WID_HP_HOUSE_PREVIEW                         = ::WID_HP_HOUSE_PREVIEW,                         ///< House preview panel.
-		WID_HP_PREV_VARIANT_SEL                      = ::WID_HP_PREV_VARIANT_SEL,                      ///< Selection widget to show/hide the prev variant buttons.
-		WID_HP_PREV_VARIANT                          = ::WID_HP_PREV_VARIANT,                          ///< Prev variant button.
-		WID_HP_NEXT_VARIANT_SEL                      = ::WID_HP_NEXT_VARIANT_SEL,                      ///< Selection widget to show/hide the next variant buttons.
-		WID_HP_NEXT_VARIANT                          = ::WID_HP_NEXT_VARIANT,                          ///< Next variant button.
 		WID_HP_HOUSE_NAME                            = ::WID_HP_HOUSE_NAME,                            ///< House name display.
 		WID_HP_HISTORICAL_BUILDING                   = ::WID_HP_HISTORICAL_BUILDING,                   ///< "Historical building" label.
 		WID_HP_HOUSE_POPULATION                      = ::WID_HP_HOUSE_POPULATION,                      ///< House population display.
@@ -2518,6 +2536,13 @@ public:
 		WID_HP_HOUSE_YEARS                           = ::WID_HP_HOUSE_YEARS,                           ///< Years display.
 		WID_HP_HOUSE_ACCEPTANCE                      = ::WID_HP_HOUSE_ACCEPTANCE,                      ///< Cargo accepted.
 		WID_HP_HOUSE_SUPPLY                          = ::WID_HP_HOUSE_SUPPLY,                          ///< Cargo supplied.
+	};
+
+	/** Widgets of the #SelectTownWindow class. */
+	enum SelectTownWidgets {
+		WID_ST_CAPTION                               = ::WID_ST_CAPTION,                               ///< Caption of the window.
+		WID_ST_PANEL                                 = ::WID_ST_PANEL,                                 ///< Main panel.
+		WID_ST_SCROLLBAR                             = ::WID_ST_SCROLLBAR,                             ///< Scrollbar of the panel.
 	};
 
 	/* automatically generated from ../../widgets/transparency_widget.h */

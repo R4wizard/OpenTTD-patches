@@ -17,7 +17,7 @@
 #define NIP_END() { NULL, 0, 0, 0, 0 }
 
 /* Helper for filling callback tables */
-#define NIC(cb_id, base, variable, bit) { #cb_id, cpp_offsetof(base, variable), cpp_sizeof(base, variable), bit, cb_id }
+#define NIC(cb_id, base, variable, bit) { #cb_id, (ptrdiff_t)cpp_offsetof(base, variable), cpp_sizeof(base, variable), bit, cb_id }
 #define NIC_END() { NULL, 0, 0, 0, 0 }
 
 /* Helper for filling variable tables */
@@ -159,7 +159,6 @@ static const NIFeature _nif_station = {
 #define NICH(cb_id, bit) NIC(cb_id, HouseSpec, callback_mask, bit)
 static const NICallback _nic_house[] = {
 	NICH(CBID_HOUSE_ALLOW_CONSTRUCTION,        CBM_HOUSE_ALLOW_CONSTRUCTION),
-	NICH(CBID_HOUSE_SETUP_VARIANT,             CBM_HOUSE_SETUP_VARIANT),
 	NICH(CBID_HOUSE_ANIMATION_NEXT_FRAME,      CBM_HOUSE_ANIMATION_NEXT_FRAME),
 	NICH(CBID_HOUSE_ANIMATION_START_STOP,      CBM_HOUSE_ANIMATION_START_STOP),
 	NICH(CBID_HOUSE_CONSTRUCTION_STATE_CHANGE, CBM_HOUSE_CONSTRUCTION_STATE_CHANGE),

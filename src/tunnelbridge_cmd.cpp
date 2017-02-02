@@ -26,6 +26,7 @@
 #include "newgrf_sound.h"
 #include "autoslope.h"
 #include "tunnelbridge_map.h"
+#include "bridge_signal_map.h"
 #include "strings_func.h"
 #include "date_func.h"
 #include "clear_func.h"
@@ -93,6 +94,16 @@ void MarkBridgeOrTunnelDirty(TileIndex tile, const ZoomLevel mark_dirty_if_zooml
 		MarkTileDirtyByTile(tile, mark_dirty_if_zoomlevel_is_below);
 		MarkTileDirtyByTile(GetOtherTunnelBridgeEnd(tile), mark_dirty_if_zoomlevel_is_below);
 	}
+}
+
+/**
+ * Get number of signals on bridge or tunnel with signal simulation.
+ * @param length Length of bridge/tunnel middle
+ * @return Number of signals on signalled bridge/tunnel of this length
+ */
+uint GetTunnelBridgeSignalSimulationSignalCount(uint length)
+{
+	return 2 + (length / _settings_game.construction.simulated_wormhole_signals);
 }
 
 /** Reset the data been eventually changed by the grf loaded. */
@@ -854,6 +865,9 @@ static CommandCost DoClearTunnel(TileIndex tile, DoCommandFlag flags)
 
 			if (Company::IsValidID(owner)) {
 				Company::Get(owner)->infrastructure.rail[GetRailType(tile)] -= len * TUNNELBRIDGE_TRACKBIT_FACTOR;
+				if (IsTunnelBridgeWithSignalSimulation(tile)) { // handle tunnel/bridge signals.
+					Company::Get(GetTileOwner(tile))->infrastructure.signal -= GetTunnelBridgeSignalSimulationSignalCount(tile, endtile);
+				}
 				DirtyCompanyInfrastructureWindows(owner);
 			}
 
@@ -941,7 +955,12 @@ static CommandCost DoClearBridge(TileIndex tile, DoCommandFlag flags)
 
 		/* Update company infrastructure counts. */
 		if (rail) {
-			if (Company::IsValidID(owner)) Company::Get(owner)->infrastructure.rail[GetRailType(tile)] -= len * TUNNELBRIDGE_TRACKBIT_FACTOR;
+			if (Company::IsValidID(owner)) {
+				Company::Get(owner)->infrastructure.rail[GetRailType(tile)] -= len * TUNNELBRIDGE_TRACKBIT_FACTOR;
+				if (IsTunnelBridgeWithSignalSimulation(tile)) { // handle tunnel/bridge signals.
+					Company::Get(GetTileOwner(tile))->infrastructure.signal -= GetTunnelBridgeSignalSimulationSignalCount(tile, endtile);
+				}
+			}
 		} else if (GetTunnelBridgeTransportType(tile) == TRANSPORT_ROAD) {
 			RoadType rt;
 			FOR_EACH_SET_ROADTYPE(rt, GetRoadTypes(tile)) {
@@ -956,6 +975,9 @@ static CommandCost DoClearBridge(TileIndex tile, DoCommandFlag flags)
 			if (Company::IsValidID(owner)) Company::Get(owner)->infrastructure.water -= len * TUNNELBRIDGE_TRACKBIT_FACTOR;
 		}
 		DirtyCompanyInfrastructureWindows(owner);
+
+		if (IsTunnelBridgeSignalSimulationEntrance(tile)) ClearBridgeEntranceSimulatedSignals(tile);
+		if (IsTunnelBridgeSignalSimulationEntrance(endtile)) ClearBridgeEntranceSimulatedSignals(endtile);
 
 		DoClearSquare(tile);
 		DoClearSquare(endtile);
@@ -1169,15 +1191,13 @@ static void DrawTunnelBridgeRampSignal(const TileInfo *ti)
 
 	SignalType type = SIGTYPE_NORMAL;
 
-	bool is_green;
+	bool is_green = (GetTunnelBridgeSignalState(ti->tile) == SIGNAL_STATE_GREEN);
 	bool show_exit;
-	if (IsTunnelBridgeExit(ti->tile)) {
-		is_green = IsTunnelBridgeExitGreen(ti->tile);
+	if (IsTunnelBridgeSignalSimulationExit(ti->tile)) {
 		show_exit = true;
 		position ^= 1;
 		if (IsTunnelBridgePBS(ti->tile)) type = SIGTYPE_PBS_ONEWAY;
 	} else {
-		is_green = IsTunnelBridgeWithSignGreen(ti->tile);
 		show_exit = false;
 	}
 
@@ -1248,14 +1268,14 @@ static void DrawBrigeSignalOnMiddlePart(const TileInfo *ti, TileIndex bridge_sta
 
 			SignalVariant variant = IsTunnelBridgeSemaphore(bridge_start_tile) ? SIG_SEMAPHORE : SIG_ELECTRIC;
 
-			SpriteID sprite;
+			SpriteID sprite = (GetBridgeEntranceSimulatedSignalState(bridge_start_tile, m2_position) == SIGNAL_STATE_GREEN);
 
 			if (variant == SIG_ELECTRIC) {
 				/* Normal electric signals are picked from original sprites. */
-				sprite = SPR_ORIGINAL_SIGNALS_BASE + ((position << 1) + !HasBit(_m[bridge_start_tile].m2, m2_position));
+				sprite += SPR_ORIGINAL_SIGNALS_BASE + (position << 1);
 			} else {
 				/* All other signals are picked from add on sprites. */
-				sprite = SPR_SIGNALS_BASE + ((SIGTYPE_NORMAL - 1) * 16 + variant * 64 + (position << 1) + !HasBit(_m[bridge_start_tile].m2, m2_position));
+				sprite += SPR_SIGNALS_BASE + (SIGTYPE_NORMAL - 1) * 16 + variant * 64 + (position << 1);
 			}
 
 			AddSortableSpriteToDraw(sprite, PAL_NONE, x, y, 1, 1, TILE_HEIGHT, z, false, 0, 0, BB_Z_SEPARATOR);
@@ -1355,14 +1375,14 @@ static void DrawTile_TunnelBridge(TileInfo *ti)
 				}
 			}
 
-			if (HasCatenaryDrawn(GetRailType(ti->tile))) {
+			if (HasRailCatenaryDrawn(GetRailType(ti->tile))) {
 				/* Maybe draw pylons on the entry side */
-				DrawCatenary(ti);
+				DrawRailCatenary(ti);
 
 				catenary = true;
 				StartSpriteCombine();
 				/* Draw wire above the ramp */
-				DrawCatenaryOnTunnel(ti);
+				DrawRailCatenaryOnTunnel(ti);
 			}
 		}
 
@@ -1379,7 +1399,7 @@ static void DrawTile_TunnelBridge(TileInfo *ti)
 		AddSortableSpriteToDraw(SPR_EMPTY_BOUNDING_BOX, PAL_NONE, ti->x + BB_data[4], ti->y + BB_data[5], BB_data[6], BB_data[7], TILE_HEIGHT, ti->z);
 
 		/* Draw signals for tunnel. */
-		if (HasWormholeSignals(ti->tile)) DrawTunnelBridgeRampSignal(ti);
+		if (IsTunnelBridgeWithSignalSimulation(ti->tile)) DrawTunnelBridgeRampSignal(ti);
 
 		DrawBridgeMiddle(ti);
 	} else { // IsBridge(ti->tile)
@@ -1483,13 +1503,13 @@ static void DrawTile_TunnelBridge(TileInfo *ti)
 			}
 
 			EndSpriteCombine();
-			if (HasCatenaryDrawn(GetRailType(ti->tile))) {
-				DrawCatenary(ti);
+			if (HasRailCatenaryDrawn(GetRailType(ti->tile))) {
+				DrawRailCatenary(ti);
 			}
 		}
 
 		/* Draw signals for bridge. */
-		if (HasWormholeSignals(ti->tile)) DrawTunnelBridgeRampSignal(ti);
+		if (IsTunnelBridgeWithSignalSimulation(ti->tile)) DrawTunnelBridgeRampSignal(ti);
 
 		DrawBridgeMiddle(ti);
 	}
@@ -1537,7 +1557,7 @@ void DrawBridgeMiddle(const TileInfo *ti)
 {
 	/* Sectional view of bridge bounding boxes:
 	 *
-	 *  1           2                                1,2 = SpriteCombine of Bridge front/(back&floor) and TramCatenary
+	 *  1           2                                1,2 = SpriteCombine of Bridge front/(back&floor) and RoadCatenary
 	 *  1           2                                  3 = empty helper BB
 	 *  1     7     2                                4,5 = pillars under higher bridges
 	 *  1 6 88888 6 2                                  6 = elrail-pylons
@@ -1626,7 +1646,7 @@ void DrawBridgeMiddle(const TileInfo *ti)
 		}
 
 		if (_game_mode != GM_MENU && _settings_client.gui.show_track_reservation && !IsInvisibilitySet(TO_BRIDGES) && HasTunnelBridgeReservation(rampnorth)
-				&& !HasWormholeSignals(rampnorth)) {
+				&& !IsTunnelBridgeWithSignalSimulation(rampnorth)) {
 			if (rti->UsesOverlay()) {
 				SpriteID overlay = GetCustomRailSprite(rti, ti->tile, RTSG_OVERLAY);
 				AddSortableSpriteToDraw(overlay + RTO_X + axis, PALETTE_CRASH, ti->x, ti->y, 16, 16, 0, bridge_z, IsTransparencySet(TO_BRIDGES));
@@ -1637,11 +1657,11 @@ void DrawBridgeMiddle(const TileInfo *ti)
 
 		EndSpriteCombine();
 
-		if (HasCatenaryDrawn(GetRailType(rampsouth))) {
-			DrawCatenaryOnBridge(ti);
+		if (HasRailCatenaryDrawn(GetRailType(rampsouth))) {
+			DrawRailCatenaryOnBridge(ti);
 		}
-		if (HasWormholeSignals(rampsouth)) {
-			IsTunnelBridgeExit(rampsouth) ? DrawBrigeSignalOnMiddlePart(ti, rampnorth, z): DrawBrigeSignalOnMiddlePart(ti, rampsouth, z);
+		if (IsTunnelBridgeWithSignalSimulation(rampsouth)) {
+			IsTunnelBridgeSignalSimulationExit(rampsouth) ? DrawBrigeSignalOnMiddlePart(ti, rampnorth, z): DrawBrigeSignalOnMiddlePart(ti, rampsouth, z);
 		}
 	}
 
@@ -1731,9 +1751,9 @@ static void GetTileDesc_TunnelBridge(TileIndex tile, TileDesc *td)
 	TransportType tt = GetTunnelBridgeTransportType(tile);
 
 	if (IsTunnel(tile)) {
-		td->str = (tt == TRANSPORT_RAIL) ? HasWormholeSignals(tile) ? STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_SIGNAL : STR_LAI_TUNNEL_DESCRIPTION_RAILROAD : STR_LAI_TUNNEL_DESCRIPTION_ROAD;
+		td->str = (tt == TRANSPORT_RAIL) ? IsTunnelBridgeWithSignalSimulation(tile) ? STR_LAI_TUNNEL_DESCRIPTION_RAILROAD_SIGNAL : STR_LAI_TUNNEL_DESCRIPTION_RAILROAD : STR_LAI_TUNNEL_DESCRIPTION_ROAD;
 	} else { // IsBridge(tile)
-		td->str = (tt == TRANSPORT_WATER) ? STR_LAI_BRIDGE_DESCRIPTION_AQUEDUCT : HasWormholeSignals(tile) ? STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_SIGNAL : GetBridgeSpec(GetBridgeType(tile))->transport_name[tt];
+		td->str = (tt == TRANSPORT_WATER) ? STR_LAI_BRIDGE_DESCRIPTION_AQUEDUCT : IsTunnelBridgeWithSignalSimulation(tile) ? STR_LAI_BRIDGE_DESCRIPTION_RAILROAD_SIGNAL : GetBridgeSpec(GetBridgeType(tile))->transport_name[tt];
 	}
 	td->owner[0] = GetTileOwner(tile);
 
@@ -1761,6 +1781,7 @@ static void GetTileDesc_TunnelBridge(TileIndex tile, TileDesc *td)
 	if (tt == TRANSPORT_RAIL) {
 		const RailtypeInfo *rti = GetRailTypeInfo(GetRailType(tile));
 		td->rail_speed = rti->max_speed;
+		td->railtype = rti->strings.name;
 
 		if (!IsTunnel(tile)) {
 			uint16 spd = GetBridgeSpec(GetBridgeType(tile))->speed;
@@ -1867,6 +1888,12 @@ static void ChangeTileOwner_TunnelBridge(TileIndex tile, Owner old_owner, Owner 
 		if (new_owner != INVALID_OWNER) Company::Get(new_owner)->infrastructure.water += num_pieces;
 	}
 
+	if (IsTunnelBridgeWithSignalSimulation(tile) && IsTunnelBridgeSignalSimulationEntrance(tile)) {
+		uint num_sigs = GetTunnelBridgeSignalSimulationSignalCount(tile, other_end);
+		Company::Get(old_owner)->infrastructure.signal -= num_sigs;
+		Company::Get(new_owner)->infrastructure.signal += num_sigs;
+	}
+
 	if (new_owner != INVALID_OWNER) {
 		SetTileOwner(tile, new_owner);
 	} else {
@@ -1949,6 +1976,7 @@ static VehicleEnterTileStatus VehicleEnter_TunnelBridge(Vehicle *v, TileIndex ti
 					/* Frame should be equal to the next frame number in the RV's movement */
 					assert(frame == rv->frame + 1);
 					rv->tile = tile;
+					rv->cur_image_valid_dir = INVALID_DIR;
 					rv->state = RVSB_WORMHOLE;
 					rv->vehstatus |= VS_HIDDEN;
 					return VETSB_ENTERED_WORMHOLE;
@@ -1960,6 +1988,7 @@ static VehicleEnterTileStatus VehicleEnter_TunnelBridge(Vehicle *v, TileIndex ti
 			/* We're at the tunnel exit ?? */
 			if (dir == ReverseDiagDir(vdir) && frame == TILE_SIZE - _tunnel_visibility_frame[dir] && z == 0) {
 				rv->tile = tile;
+				rv->cur_image_valid_dir = INVALID_DIR;
 				rv->state = DiagDirToDiagTrackdir(vdir);
 				rv->frame = frame;
 				rv->vehstatus &= ~VS_HIDDEN;
@@ -1990,6 +2019,7 @@ static VehicleEnterTileStatus VehicleEnter_TunnelBridge(Vehicle *v, TileIndex ti
 
 				case VEH_ROAD: {
 					RoadVehicle *rv = RoadVehicle::From(v);
+					rv->cur_image_valid_dir = INVALID_DIR;
 					rv->state = RVSB_WORMHOLE;
 					/* There are no slopes inside bridges / tunnels. */
 					ClrBit(rv->gv_flags, GVF_GOINGUP_BIT);
@@ -2019,6 +2049,7 @@ static VehicleEnterTileStatus VehicleEnter_TunnelBridge(Vehicle *v, TileIndex ti
 				case VEH_ROAD: {
 					RoadVehicle *rv = RoadVehicle::From(v);
 					if (rv->state == RVSB_WORMHOLE) {
+						rv->cur_image_valid_dir = INVALID_DIR;
 						rv->state = DiagDirToDiagTrackdir(vdir);
 						rv->frame = 0;
 						return VETSB_ENTERED_WORMHOLE;

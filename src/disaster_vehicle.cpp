@@ -112,7 +112,7 @@ void DisasterVehicle::UpdateImage()
 {
 	SpriteID img = this->image_override;
 	if (img == 0) img = _disaster_images[this->subtype][this->direction];
-	this->cur_image = img;
+	this->sprite_seq.Set(img);
 }
 
 /**
@@ -186,6 +186,7 @@ void DisasterVehicle::UpdatePosition(int x, int y, int z)
 	this->z_pos = z;
 	this->tile = TileVirtXY(x, y);
 
+	this->cur_image_valid_dir = INVALID_DIR;
 	this->UpdateImage();
 	this->UpdatePositionAndViewport();
 
@@ -199,6 +200,7 @@ void DisasterVehicle::UpdatePosition(int x, int y, int z)
 		safe_y = Clamp(u->y_pos, 0, MapMaxY() * TILE_SIZE);
 		u->z_pos = GetSlopePixelZ(safe_x, safe_y);
 		u->direction = this->direction;
+		u->cur_image_valid_dir = INVALID_DIR;
 
 		u->UpdateImage();
 		u->UpdatePositionAndViewport();
@@ -500,7 +502,8 @@ static bool DisasterTick_Helicopter_Rotors(DisasterVehicle *v)
 	v->tick_counter++;
 	if (HasBit(v->tick_counter, 0)) return true;
 
-	if (++v->cur_image > SPR_ROTOR_MOVING_3) v->cur_image = SPR_ROTOR_MOVING_1;
+	SpriteID &cur_image = v->sprite_seq.seq[0].sprite;
+	if (++cur_image > SPR_ROTOR_MOVING_3) cur_image = SPR_ROTOR_MOVING_1;
 
 	v->UpdatePositionAndViewport();
 

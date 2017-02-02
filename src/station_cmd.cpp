@@ -3024,12 +3024,12 @@ draw_default_foundation:
 		}
 	}
 
-	if (HasStationRail(ti->tile) && HasCatenaryDrawn(GetRailType(ti->tile))) DrawCatenary(ti);
+	if (HasStationRail(ti->tile) && HasRailCatenaryDrawn(GetRailType(ti->tile))) DrawRailCatenary(ti);
 
 	if (HasBit(roadtypes, ROADTYPE_TRAM)) {
 		Axis axis = GetRoadStopDir(ti->tile) == DIAGDIR_NE ? AXIS_X : AXIS_Y;
 		DrawGroundSprite((HasBit(roadtypes, ROADTYPE_ROAD) ? SPR_TRAMWAY_OVERLAY : SPR_TRAMWAY_TRAM) + (axis ^ 1), PAL_NONE);
-		DrawTramCatenary(ti, axis == AXIS_X ? ROAD_X : ROAD_Y);
+		DrawRoadCatenary(ti, axis == AXIS_X ? ROAD_X : ROAD_Y);
 	}
 
 	if (IsRailWaypoint(ti->tile)) {
@@ -3122,6 +3122,7 @@ static void GetTileDesc_Station(TileIndex tile, TileDesc *td)
 
 		const RailtypeInfo *rti = GetRailTypeInfo(GetRailType(tile));
 		td->rail_speed = rti->max_speed;
+		td->railtype = rti->strings.name;
 	}
 
 	if (IsAirport(tile)) {
@@ -3558,8 +3559,8 @@ void RerouteCargo(Station *st, CargoID c, StationID avoid, StationID avoid2)
 	ge.cargo.Reroute(UINT_MAX, &ge.cargo, avoid, avoid2, &ge);
 
 	/* Reroute cargo staged to be transfered. */
-	for (std::list<Vehicle *>::iterator it(st->loading_vehicles.begin()); it != st->loading_vehicles.end(); ++it) {
-		for (Vehicle *v = *it; v != NULL; v = v->Next()) {
+	for (Vehicle *v : st->loading_vehicles) {
+		for (; v != NULL; v = v->Next()) {
 			if (v->cargo_type != c) continue;
 			v->cargo.Reroute(UINT_MAX, &v->cargo, avoid, avoid2, &ge);
 		}
@@ -3577,6 +3578,7 @@ void RerouteCargo(Station *st, CargoID c, StationID avoid, StationID avoid2)
 void DeleteStaleLinks(Station *from)
 {
 	for (CargoID c = 0; c < NUM_CARGO; ++c) {
+		const bool auto_distributed = (_settings_game.linkgraph.GetDistributionType(c) != DT_MANUAL);
 		GoodsEntry &ge = from->goods[c];
 		LinkGraph *lg = LinkGraph::GetIfValid(ge.link_graph);
 		if (lg == NULL) continue;
@@ -3589,36 +3591,52 @@ void DeleteStaleLinks(Station *from)
 			assert(_date >= edge.LastUpdate());
 			uint timeout = max<uint>((LinkGraph::MIN_TIMEOUT_DISTANCE + (DistanceManhattan(from->xy, to->xy) >> 3)) / _settings_game.economy.day_length_factor, 1);
 			if ((uint)(_date - edge.LastUpdate()) > timeout) {
-				/* Have all vehicles refresh their next hops before deciding to
-				 * remove the node. */
 				bool updated = false;
-				OrderList *l;
-				FOR_ALL_ORDER_LISTS(l) {
-					bool found_from = false;
-					bool found_to = false;
-					for (Order *order = l->GetFirstOrder(); order != NULL; order = order->next) {
-						if (!order->IsType(OT_GOTO_STATION) && !order->IsType(OT_IMPLICIT)) continue;
-						if (order->GetDestination() == from->index) {
-							found_from = true;
-							if (found_to) break;
-						} else if (order->GetDestination() == to->index) {
-							found_to = true;
-							if (found_from) break;
+
+				if (auto_distributed) {
+					/* Have all vehicles refresh their next hops before deciding to
+					 * remove the node. */
+					OrderList *l;
+					SmallVector<Vehicle *, 32> vehicles;
+					FOR_ALL_ORDER_LISTS(l) {
+						bool found_from = false;
+						bool found_to = false;
+						for (Order *order = l->GetFirstOrder(); order != NULL; order = order->next) {
+							if (!order->IsType(OT_GOTO_STATION) && !order->IsType(OT_IMPLICIT)) continue;
+							if (order->GetDestination() == from->index) {
+								found_from = true;
+								if (found_to) break;
+							} else if (order->GetDestination() == to->index) {
+								found_to = true;
+								if (found_from) break;
+							}
 						}
+						if (!found_to || !found_from) continue;
+						*(vehicles.Append()) = l->GetFirstSharedVehicle();
 					}
-					if (!found_to || !found_from) continue;
-					for (Vehicle *v = l->GetFirstSharedVehicle(); !updated && v != NULL; v = v->NextShared()) {
-						/* There is potential for optimization here:
-						 * - Usually consists of the same order list are the same. It's probably better to
-						 *   first check the first of each list, then the second of each list and so on.
-						 * - We could try to figure out if we've seen a consist with the same cargo on the
-						 *   same list already and if the consist can actually carry the cargo we're looking
-						 *   for. With conditional and refit orders this is not quite trivial, though. */
+
+					Vehicle **iter = vehicles.Begin();
+					while (iter != vehicles.End()) {
+						Vehicle *v = *iter;
+
 						LinkRefresher::Run(v, false); // Don't allow merging. Otherwise lg might get deleted.
-						if (edge.LastUpdate() == _date) updated = true;
+						if (edge.LastUpdate() == _date) {
+							updated = true;
+							break;
+						}
+
+						Vehicle *next_shared = v->NextShared();
+						if (next_shared) {
+							*iter = next_shared;
+							++iter;
+						} else {
+							vehicles.Erase(iter);
+						}
+
+						if (iter == vehicles.End()) iter = vehicles.Begin();
 					}
-					if (updated) break;
 				}
+
 				if (!updated) {
 					/* If it's still considered dead remove it. */
 					node.RemoveEdge(to->goods[c].node);
@@ -3692,28 +3710,6 @@ void IncreaseStats(Station *st, CargoID cargo, StationID next_station_id, uint c
 	}
 	if (lg != NULL) {
 		(*lg)[ge1.node].UpdateEdge(ge2.node, capacity, usage, mode);
-	}
-}
-
-/**
- * Increase capacity for all link stats associated with vehicles in the given consist.
- * @param st Station to get the link stats from.
- * @param front First vehicle in the consist.
- * @param next_station_id Station the consist will be travelling to next.
- */
-void IncreaseStats(Station *st, const Vehicle *front, StationID next_station_id)
-{
-	for (const Vehicle *v = front; v != NULL; v = v->Next()) {
-		if (v->refit_cap > 0) {
-			/* The cargo count can indeed be higher than the refit_cap if
-			 * wagons have been auto-replaced and subsequently auto-
-			 * refitted to a higher capacity. The cargo gets redistributed
-			 * among the wagons in that case.
-			 * As usage is not such an important figure anyway we just
-			 * ignore the additional cargo then.*/
-			IncreaseStats(st, v->cargo_type, next_station_id, v->refit_cap,
-				min(v->refit_cap, v->cargo.StoredCount()), EUM_INCREASE);
-		}
 	}
 }
 
@@ -3888,6 +3884,7 @@ void FindStationsAroundTiles(const TileArea &location, StationList *stations)
 {
 	/* area to search = producer plus station catchment radius */
 	uint max_rad = (_settings_game.station.modified_catchment ? MAX_CATCHMENT : CA_UNMODIFIED);
+	max_rad += _settings_game.station.catchment_increase;
 
 	uint x = TileX(location.tile);
 	uint y = TileY(location.tile);

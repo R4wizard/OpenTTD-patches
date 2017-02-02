@@ -65,7 +65,8 @@ static inline uint GetVehicleHeight(VehicleType type)
 	return (type == VEH_TRAIN || type == VEH_ROAD) ? 14 : 24;
 }
 
-int GetVehicleWidth(Vehicle *v, EngineImageType image_type);
+int GetSingleVehicleWidth(const Vehicle *v, EngineImageType image_type);
+int GetVehicleWidth(const Vehicle *v, EngineImageType image_type);
 
 /** Dimensions of a cell in the purchase/depot windows. */
 struct VehicleCellSize {
@@ -101,6 +102,7 @@ void StartStopVehicle(const Vehicle *v, bool texteffect);
 Vehicle *CheckClickOnVehicle(const struct ViewPort *vp, int x, int y);
 
 void DrawVehicleImage(const Vehicle *v, int left, int right, int y, VehicleID selection, EngineImageType image_type, int skip);
+void SetMouseCursorVehicle(const Vehicle *v, EngineImageType image_type);
 
 /**
  * Tell if the focused window concerns the specified vehicle.
@@ -124,6 +126,8 @@ static inline bool HasFocusedVehicleChanged(const VehicleID vid, Window *ref_win
 			case WC_VEHICLE_ORDERS:
 			case WC_VEHICLE_TIMETABLE:
 			case WC_VEHICLE_VIEW:
+			case WC_VEHICLE_CARGO_TYPE_LOAD_ORDERS:
+			case WC_VEHICLE_CARGO_TYPE_UNLOAD_ORDERS:
 				return ((uint32) wn != vid);
 		}
 	}

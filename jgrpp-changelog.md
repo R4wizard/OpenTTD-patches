@@ -2,12 +2,105 @@
 
 * * *
 
+### v0.16.1 (2017-01-05)
+* Fix hang which could occur when using conditional orders and cargodest.
+* Fix vehicle repair costs patch, and change cost algorithm to avoid excessive costs.
+* Fix redrawing of viewport order lines/markers for multiplayer clients.
+* Fix template replacement virtual vehicles from appearing in advice news messages.
+* Signals on bridges/tunnels:
+  * Fix train crash on bridge/tunnel with signals leaving red signals behind when crash cleared.
+  * Change back of bridge/tunnel PBS exit to be a line-end safe waiting point.
+* Add shift-clicking on vehicle depot button to select specific depot.
+* Show warning dialog if NewGRFs use too many string IDs.
+* Add Korean translations by kiwitreekor.
+* Bump trunk base from r27680 to r27719
+
+### v0.16.0 (2016-11-26)
+* Fix wrong calculation of infrastructure sharing train repayment on track deletion due to track owner bankruptcy.
+* Fix loaded SpringPP savegames having wrong red/green state of signals on bridges/tunnels.
+* Add setting to increase station catchment radius.
+* Allow town cargo generation factor setting to be more finely adjusted (0.1 increments).
+* Cargo dest:
+  * Changes to link graph job scheduling algorithm, to improve responsiveness of updates.
+  * Add hover tool-tips to graph legend window.
+  * Improve visual contrast of graph legend window cargo labels.
+* Bump trunk base from r27661 to r27680
+
+### v0.15.1 (2016-10-12)
+* Fix incorrect behaviour or multiplayer desync when saving/loading or joining a game with a per cargo type order as a vehicle's current order.
+* Enhanced viewports:
+  * If an order list includes the same destination a large number of times, show a single marker instead of a large stack.
+  * Improve performance of route markers/lines.
+* Departure board windows can now be scrolled using the mouse wheel.
+* Bump trunk base from r27656 to r27661
+
+### v0.15.0 (2016-09-27)
+* Signals on bridges/tunnels:
+  * Fix crash when dragging signals over bridges/tunnels.
+  * Fix bridge/tunnel entrance signal not always being redrawn when state changes.
+  * Display correct signal state for all signals on bridge middle part, not just first 16.
+* Add cargo type orders patch, this allows order load/unload types to be set per cargo type.
+* Add random town road reconstruction patch (default off).
+* Add patch: when building tunnels, open new viewports at the far end of the tunnel.
+* Template-based train replacement:
+  * Fix vehicle not being unselected when aborting drag.
+  * Sell button now lowers on hover.
+* Enhanced viewports: Fix route markers/lines being hidden when using drop-down menus in the order window.
+* Compiler requirements change: C++11 support is now required.
+* Improve clang compiler support.
+* Various minor performance improvements.
+* Bump trunk base from r27623 to r27656
+
+### v0.14.0 (2016-07-27)
+* Routing restrictions:
+  * Add conditionals: train weight, power, max T.E., power/weight and max T.E/weight.
+  * Add client setting to show train weight ratios in details header.
+  * Allow value of "PBS entry signal" conditional to be a rail depot.
+  * Fix reservation through multiple reserve-through signals after a junction.
+  * Fix compliation on MSVC.
+* Template-based train replacement:
+  * Fix crash when attempting to create a template train which used certain NewGRF features.
+  * Select most used rail type by default, instead of first rail type.
+* Fix loading of SpringPP savegames (regression in jgrpp-0.13.1).
+* Fix crash involving very long articulated vehicles in preview window.
+* Enhanced viewports: Update route markers/lines when drag/dropping vehicle orders.
+* Improve performance when not running as a dedicated server in some circumstances.
+* Bump trunk base from r27599 to r27623
+
+### v0.13.3 (2016-06-12)
+* Fix improved breakdowns reducing aircraft speed to 0 in some circumstances.
+* Fix town cargo other than passengers and mail (e.g. ECS tourists) not being generated.
+* Fix crash after deleting a template replacement vehicle, when it was in use by more than one group.
+* Fix compliation on gcc 6 and some platforms.
+* Various improvements to the crash logger.
+* Bump trunk base from r27564 to r27599
+
+### v0.13.2 (2016-05-13)
+* Fix desync issues by reverting from v4 to v2 of house picking/placing patch, due to desync issue present in v4.
+* Fix crash when using start date, autofill or clear/change time buttons in timetable window when vehicle had no orders.
+* Timetable start times are no longer subject to rounding when the day length is greater than 1.
+* Bump trunk base from r27555 to r27564
+
+### v0.13.1 (2016-05-09)
+* Fix crash when using erroneously present create group from vehicle list menu item in vehicle group GUI, remove menu item from vehicle group GUI.
+* Fix incorrect calculation of final delivery payment after a transfer.
+* Signals on bridges/tunnels:
+  * Fix trains not leaving stations by PBS into non-empty signalled bridge/tunnels.
+  * Fix signalled bridge/tunnel not always being redrawn on (un)reservation.
+* Auto timetables:
+  * Timetable auto separation is now per vehicle, with a company setting for the default. Remove global on-off settings.
+  * Fix automate, start date, change time and autofill buttons being shown enabled for other companies' vehicles.
+  * Add client setting to show the remainder ticks in timetable, after dividing to days or minutes.
+  * Add a company setting to control the number of ticks used in auto-fill timetable rounding.
+* Bump trunk base from r27547 to r27555
+
 ### v0.13.0 (2016-04-19)
 * Fix crash when dragging two-directional block signals onto a bridge or tunnel.
 * Add polyline rail track building tool.
 * Routing restrictions: Add a train group membership conditional.
 * Increase number of available rail track types from 16 to 32.
 * Rail signals on bridges and tunnels now use rail-type specific graphics where available.
+* Update from v2 to v4 of house picking/placing patch.
 * Bump trunk base from r27525 to r27547
 
 ### v0.12.1 (2016-03-23)

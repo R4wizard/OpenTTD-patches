@@ -60,6 +60,8 @@
 
 #include "table/strings.h"
 
+#include <algorithm>
+
 #include "safeguards.h"
 
 #define GEN_HASH(x, y) ((GB((y), 6 + ZOOM_LVL_SHIFT, 6) << 6) + GB((x), 7 + ZOOM_LVL_SHIFT, 6))
@@ -72,6 +74,48 @@ uint16 _returned_mail_refit_capacity; ///< Stores the mail capacity after a refi
 /** The pool with all our precious vehicles. */
 VehiclePool _vehicle_pool("Vehicle");
 INSTANTIATE_POOL_METHODS(Vehicle)
+
+static std::set<Vehicle *> _vehicles_to_pay_repair;
+
+/**
+ * Determine shared bounds of all sprites.
+ * @param [out] bounds Shared bounds.
+ */
+void VehicleSpriteSeq::GetBounds(Rect *bounds) const
+{
+	bounds->left = bounds->top = bounds->right = bounds->bottom = 0;
+	for (uint i = 0; i < this->count; ++i) {
+		const Sprite *spr = GetSprite(this->seq[i].sprite, ST_NORMAL);
+		if (i == 0) {
+			bounds->left = spr->x_offs;
+			bounds->top  = spr->y_offs;
+			bounds->right  = spr->width  + spr->x_offs - 1;
+			bounds->bottom = spr->height + spr->y_offs - 1;
+		} else {
+			if (spr->x_offs < bounds->left) bounds->left = spr->x_offs;
+			if (spr->y_offs < bounds->top)  bounds->top  = spr->y_offs;
+			int right  = spr->width  + spr->x_offs - 1;
+			int bottom = spr->height + spr->y_offs - 1;
+			if (right  > bounds->right)  bounds->right  = right;
+			if (bottom > bounds->bottom) bounds->bottom = bottom;
+		}
+	}
+}
+
+/**
+ * Draw the sprite sequence.
+ * @param x X position
+ * @param y Y position
+ * @param default_pal Vehicle palette
+ * @param force_pal Whether to ignore individual palettes, and draw everything with \a default_pal.
+ */
+void VehicleSpriteSeq::Draw(int x, int y, PaletteID default_pal, bool force_pal) const
+{
+	for (uint i = 0; i < this->count; ++i) {
+		PaletteID pal = force_pal || !this->seq[i].pal ? default_pal : this->seq[i].pal;
+		DrawSprite(this->seq[i].sprite, pal, x, y);
+	}
+}
 
 /**
  * Function to tell if a vehicle needs to be autorenewed
@@ -117,54 +161,20 @@ void VehicleServiceInDepot(Vehicle *v)
 			CLRBITS(Train::From(v)->flags, (1 << VRF_BREAKDOWN_BRAKING) | VRF_IS_BROKEN );
 		}
 	}
-	v->date_of_last_service = _date;
-	v->breakdowns_since_last_service = 0;
-	v->reliability = e->reliability;
-	v->breakdown_ctr = 0;
 	v->vehstatus &= ~VS_AIRCRAFT_BROKEN;
 	SetWindowDirty(WC_VEHICLE_DETAILS, v->index); // ensure that last service date and reliability are updated
 
 	do {
 		v->date_of_last_service = _date;
 		if (_settings_game.vehicle.pay_for_repair && v->breakdowns_since_last_service) {
-			CompanyID old = _current_company;
-			ExpensesType type = INVALID_EXPENSES;
-			_current_company = v->owner;
-			switch (v->type) {
-				case VEH_AIRCRAFT:
-					type = EXPENSES_AIRCRAFT_RUN;
-					break;
-
-				case VEH_TRAIN:
-					type = EXPENSES_TRAIN_RUN;
-					break;
-
-				case VEH_SHIP:
-					type = EXPENSES_SHIP_RUN;
-					break;
-
-				case VEH_ROAD:
-					type = EXPENSES_ROADVEH_RUN;
-					break;
-
-				default:
-					NOT_REACHED();
-			}
-			assert(type != INVALID_EXPENSES);
-
-			// The static cast is to fix compilation on (old) MSVC as the overload for OverflowSafeInt operator / is ambiguous.
-			Money repair_cost = (v->breakdowns_since_last_service * v->repair_cost / static_cast<uint>(_settings_game.vehicle.repair_cost)) + 1;
-			CommandCost cost(type, repair_cost);
-			v->First()->profit_this_year -= cost.GetCost() << 8;
-			SubtractMoneyFromCompany(cost);
-			ShowCostOrIncomeAnimation(v->x_pos, v->y_pos, v->z_pos, cost.GetCost());
-			_current_company = old;
+			_vehicles_to_pay_repair.insert(v);
+		} else {
+			v->breakdowns_since_last_service = 0;
 		}
-
-		v->breakdowns_since_last_service = 0;
 		v->reliability = v->GetEngine()->reliability;
 		/* Prevent vehicles from breaking down directly after exiting the depot. */
 		v->breakdown_chance = 0;
+		v->breakdown_ctr = 0;
 		v = v->Next();
 	} while (v != NULL && v->HasEngineType());
 }
@@ -274,9 +284,7 @@ uint Vehicle::Crash(bool flooded)
 	}
 
 	this->ClearSeparation();
-	if (_settings_game.order.timetable_separation) {
-		ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
-	}
+	if (HasBit(this->vehicle_flags, VF_TIMETABLE_SEPARATION)) ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
 
 	/* Dirty some windows */
 	InvalidateWindowClassesData(GetWindowClassForVehicleType(this->type), 0);
@@ -285,7 +293,7 @@ uint Vehicle::Crash(bool flooded)
 	SetWindowDirty(WC_VEHICLE_DEPOT, this->tile);
 
 	delete this->cargo_payment;
-	this->cargo_payment = NULL;
+	assert(this->cargo_payment == NULL); // cleared by ~CargoPayment
 
 	return RandomRange(pass + 1); // Randomise deceased passengers.
 }
@@ -369,6 +377,7 @@ Vehicle::Vehicle(VehicleType type)
 	this->cargo_age_counter  = 1;
 	this->last_station_visited = INVALID_STATION;
 	this->last_loading_station = INVALID_STATION;
+	this->cur_image_valid_dir  = INVALID_DIR;
 }
 
 /**
@@ -831,11 +840,12 @@ void Vehicle::PreDestructor()
 
 	if (Station::IsValidID(this->last_station_visited)) {
 		Station *st = Station::Get(this->last_station_visited);
-		st->loading_vehicles.remove(this);
+		st->loading_vehicles.erase(std::remove(st->loading_vehicles.begin(), st->loading_vehicles.end(), this), st->loading_vehicles.end());
 
 		HideFillingPercent(&this->fill_percent_te_id);
 		this->CancelReservation(INVALID_STATION, st);
 		delete this->cargo_payment;
+		assert(this->cargo_payment == NULL); // cleared by ~CargoPayment
 	}
 
 	if (this->IsEngineCountable()) {
@@ -875,6 +885,8 @@ void Vehicle::PreDestructor()
 		DeleteWindowById(WC_VEHICLE_REFIT, this->index);
 		DeleteWindowById(WC_VEHICLE_DETAILS, this->index);
 		DeleteWindowById(WC_VEHICLE_TIMETABLE, this->index);
+		DeleteWindowById(WC_VEHICLE_CARGO_TYPE_LOAD_ORDERS, this->index);
+		DeleteWindowById(WC_VEHICLE_CARGO_TYPE_UNLOAD_ORDERS, this->index);
 		SetWindowDirty(WC_COMPANY, this->owner);
 		OrderBackup::ClearVehicle(this);
 	}
@@ -896,6 +908,8 @@ Vehicle::~Vehicle()
 		this->cargo.OnCleanPool();
 		return;
 	}
+
+	if (this->breakdowns_since_last_service) _vehicles_to_pay_repair.erase(this);
 
 	/* sometimes, eg. for disaster vehicles, when company bankrupts, when removing crashed/flooded vehicles,
 	 * it may happen that vehicle chain is deleted when visible */
@@ -999,6 +1013,7 @@ void CallVehicleTicks()
 {
 	_vehicles_to_autoreplace.Clear();
 	_vehicles_to_templatereplace.Clear();
+	_vehicles_to_pay_repair.clear();
 
 	if (_tick_skip_counter == 0) RunVehicleDayProc();
 
@@ -1150,6 +1165,48 @@ void CallVehicleTicks()
 		ShowAutoReplaceAdviceMessage(res, t);
 	}
 	tmpl_cur_company.Restore();
+
+	Backup<CompanyByte> repair_cur_company(_current_company, FILE_LINE);
+	for (Vehicle *v : _vehicles_to_pay_repair) {
+		SCOPE_INFO_FMT([v], "CallVehicleTicks: repair: %s", scope_dumper().VehicleInfo(v));
+
+		ExpensesType type = INVALID_EXPENSES;
+		_current_company = v->owner;
+		switch (v->type) {
+			case VEH_AIRCRAFT:
+				type = EXPENSES_AIRCRAFT_RUN;
+				break;
+
+			case VEH_TRAIN:
+				type = EXPENSES_TRAIN_RUN;
+				break;
+
+			case VEH_SHIP:
+				type = EXPENSES_SHIP_RUN;
+				break;
+
+			case VEH_ROAD:
+				type = EXPENSES_ROADVEH_RUN;
+				break;
+
+			default:
+				NOT_REACHED();
+		}
+		assert(type != INVALID_EXPENSES);
+
+		Money vehicle_new_value = v->GetEngine()->GetCost();
+
+		// The static cast is to fix compilation on (old) MSVC as the overload for OverflowSafeInt operator / is ambiguous.
+		Money repair_cost = (v->breakdowns_since_last_service * vehicle_new_value / static_cast<uint>(_settings_game.vehicle.repair_cost)) + 1;
+		if (v->age > v->max_age) repair_cost <<= 1;
+		CommandCost cost(type, repair_cost);
+		v->First()->profit_this_year -= cost.GetCost() << 8;
+		SubtractMoneyFromCompany(cost);
+		ShowCostOrIncomeAnimation(v->x_pos, v->y_pos, v->z_pos, cost.GetCost());
+		v->breakdowns_since_last_service = 0;
+	}
+	repair_cur_company.Restore();
+	_vehicles_to_pay_repair.clear();
 }
 
 /**
@@ -1158,7 +1215,6 @@ void CallVehicleTicks()
  */
 static void DoDrawVehicle(const Vehicle *v)
 {
-	SpriteID image = v->cur_image;
 	PaletteID pal = PAL_NONE;
 
 	if (v->vehstatus & VS_DEFPAL) pal = (v->vehstatus & VS_CRASHED) ? PALETTE_CRASH : GetVehiclePalette(v);
@@ -1173,8 +1229,14 @@ static void DoDrawVehicle(const Vehicle *v)
 		if (to != TO_INVALID && (IsTransparencySet(to) || IsInvisibilitySet(to))) return;
 	}
 
-	AddSortableSpriteToDraw(image, pal, v->x_pos + v->x_offs, v->y_pos + v->y_offs,
-		v->x_extent, v->y_extent, v->z_extent, v->z_pos, shadowed, v->x_bb_offs, v->y_bb_offs);
+	StartSpriteCombine();
+	for (uint i = 0; i < v->sprite_seq.count; ++i) {
+		PaletteID pal2 = v->sprite_seq.seq[i].pal;
+		if (!pal2 || (v->vehstatus & VS_CRASHED)) pal2 = pal;
+		AddSortableSpriteToDraw(v->sprite_seq.seq[i].sprite, pal2, v->x_pos + v->x_offs, v->y_pos + v->y_offs,
+			v->x_extent, v->y_extent, v->z_extent, v->z_pos, shadowed, v->x_bb_offs, v->y_bb_offs);
+	}
+	EndSpriteCombine();
 }
 
 /**
@@ -1332,9 +1394,6 @@ Vehicle *CheckClickOnVehicle(const ViewPort *vp, int x, int y)
 void DecreaseVehicleValue(Vehicle *v)
 {
 	v->value -= v->value >> 8;
-	if ( v->age > v->max_age ) { // double cost for each max_age days after max_age
-		v->repair_cost += v->repair_cost >> 8;
-	}
 	SetWindowDirty(WC_VEHICLE_DETAILS, v->index);
 }
 
@@ -1387,8 +1446,8 @@ void DetermineBreakdownType(Vehicle *v, uint32 r) {
 		if (rand <= breakdown_type_chance[BREAKDOWN_AIRCRAFT_SPEED]) {
 			v->breakdown_type = BREAKDOWN_AIRCRAFT_SPEED;
 			/* all speed values here are 1/8th of the real max speed in km/h */
-			byte max_speed = min(AircraftVehInfo( v->engine_type )->max_speed >> 3, 255);
-			byte min_speed = min(15 + (max_speed >> 2), AircraftVehInfo(v->engine_type)->max_speed >> 4);
+			byte max_speed = max(1, min(v->vcache.cached_max_speed >> 3, 255));
+			byte min_speed = max(1, min(15 + (max_speed >> 2), v->vcache.cached_max_speed >> 4));
 			v->breakdown_severity = min_speed + (((v->reliability + GB(r, 16, 16)) * (max_speed - min_speed)) >> 17);
 		} else if (rand <= breakdown_type_chance[BREAKDOWN_AIRCRAFT_DEPOT]) {
 			v->breakdown_type = BREAKDOWN_AIRCRAFT_DEPOT;
@@ -1647,6 +1706,9 @@ bool Vehicle::HandleBreakdown()
  */
 void AgeVehicle(Vehicle *v)
 {
+	/* Stop if a virtual vehicle */
+	if (HasBit(v->subtype, GVSF_VIRTUAL)) return;
+
 	if (v->age < MAX_DAY) {
 		v->age++;
 		if (v->IsPrimaryVehicle() && v->age == VEHICLE_PROFIT_MIN_AGE + 1) GroupStatistics::VehicleReachedProfitAge(v);
@@ -1851,7 +1913,7 @@ void VehicleEnterDepot(Vehicle *v)
 		if (v->current_order.GetDepotOrderType() & ODTFB_PART_OF_ORDERS) {
 			v->DeleteUnreachedImplicitOrders();
 			UpdateVehicleTimetable(v, true);
-			if (v->current_order.IsWaitTimetabled()) {
+			if (v->current_order.IsWaitTimetabled() && !(v->current_order.GetDepotActionType() & ODATFB_HALT)) {
 				v->current_order.MakeWaiting();
 				v->current_order.SetNonStopType(ONSF_NO_STOP_AT_ANY_STATION);
 				return;
@@ -1867,6 +1929,7 @@ void VehicleEnterDepot(Vehicle *v)
 			 * before the stop to the station after the stop can't be predicted
 			 * we shouldn't construct it when the vehicle visits the next stop. */
 			v->last_loading_station = INVALID_STATION;
+			ClrBit(v->vehicle_flags, VF_LAST_LOAD_ST_SEP);
 			if (v->owner == _local_company) {
 				SetDParam(0, v->index);
 				AddVehicleAdviceNewsItem(STR_NEWS_TRAIN_IS_WAITING + v->type, v->index);
@@ -1894,20 +1957,19 @@ void Vehicle::UpdatePosition()
  */
 void Vehicle::UpdateViewport(bool dirty)
 {
-	int img = this->cur_image;
+	Rect new_coord;
+	this->sprite_seq.GetBounds(&new_coord);
+
 	Point pt = RemapCoords(this->x_pos + this->x_offs, this->y_pos + this->y_offs, this->z_pos);
-	const Sprite *spr = GetSprite(img, ST_NORMAL);
+	new_coord.left   += pt.x;
+	new_coord.top    += pt.y;
+	new_coord.right  += pt.x + 2 * ZOOM_LVL_BASE;
+	new_coord.bottom += pt.y + 2 * ZOOM_LVL_BASE;
 
-	pt.x += spr->x_offs;
-	pt.y += spr->y_offs;
-
-	UpdateVehicleViewportHash(this, pt.x, pt.y);
+	UpdateVehicleViewportHash(this, new_coord.left, new_coord.top);
 
 	Rect old_coord = this->coord;
-	this->coord.left   = pt.x;
-	this->coord.top    = pt.y;
-	this->coord.right  = pt.x + spr->width + 2 * ZOOM_LVL_BASE;
-	this->coord.bottom = pt.y + spr->height + 2 * ZOOM_LVL_BASE;
+	this->coord = new_coord;
 
 	if (dirty) {
 		if (old_coord.left == INVALID_COORD) {
@@ -2340,6 +2402,33 @@ void Vehicle::DeleteUnreachedImplicitOrders()
 }
 
 /**
+ * Increase capacity for all link stats associated with vehicles in the given consist.
+ * @param st Station to get the link stats from.
+ * @param front First vehicle in the consist.
+ * @param next_station_id Station the consist will be travelling to next.
+ */
+static void VehicleIncreaseStats(const Vehicle *front)
+{
+	for (const Vehicle *v = front; v != NULL; v = v->Next()) {
+		StationID last_loading_station = HasBit(front->vehicle_flags, VF_LAST_LOAD_ST_SEP) ? v->last_loading_station : front->last_loading_station;
+		if (v->refit_cap > 0 &&
+				last_loading_station != INVALID_STATION &&
+				last_loading_station != front->last_station_visited &&
+				((front->current_order.GetCargoLoadType(v->cargo_type) & OLFB_NO_LOAD) == 0 ||
+				(front->current_order.GetCargoUnloadType(v->cargo_type) & OUFB_NO_UNLOAD) == 0)) {
+			/* The cargo count can indeed be higher than the refit_cap if
+			 * wagons have been auto-replaced and subsequently auto-
+			 * refitted to a higher capacity. The cargo gets redistributed
+			 * among the wagons in that case.
+			 * As usage is not such an important figure anyway we just
+			 * ignore the additional cargo then.*/
+			IncreaseStats(Station::Get(last_loading_station), v->cargo_type, front->last_station_visited, v->refit_cap,
+				min(v->refit_cap, v->cargo.StoredCount()), EUM_INCREASE);
+		}
+	}
+}
+
+/**
  * Prepare everything to begin the loading when arriving at a station.
  * @pre IsTileType(this->tile, MP_STATION) || this->type == VEH_SHIP.
  */
@@ -2449,12 +2538,7 @@ void Vehicle::BeginLoading()
 		this->current_order.MakeLoading(false);
 	}
 
-	if (this->last_loading_station != INVALID_STATION &&
-			this->last_loading_station != this->last_station_visited &&
-			((this->current_order.GetLoadType() & OLFB_NO_LOAD) == 0 ||
-			(this->current_order.GetUnloadType() & OUFB_NO_UNLOAD) == 0)) {
-		IncreaseStats(Station::Get(this->last_loading_station), this, this->last_station_visited);
-	}
+	VehicleIncreaseStats(this);
 
 	PrepareUnload(this);
 
@@ -2486,6 +2570,21 @@ void Vehicle::CancelReservation(StationID next, Station *st)
 	}
 }
 
+uint32 Vehicle::GetLastLoadingStationValidCargoMask() const
+{
+	if (!HasBit(this->vehicle_flags, VF_LAST_LOAD_ST_SEP)) {
+		return (this->last_loading_station != INVALID_STATION) ? ~0 : 0;
+	} else {
+		uint32 cargo_mask = 0;
+		for (const Vehicle *u = this; u != NULL; u = u->Next()) {
+			if (u->cargo_type < NUM_CARGO && u->last_loading_station != INVALID_STATION) {
+				SetBit(cargo_mask, u->cargo_type);
+			}
+		}
+		return cargo_mask;
+	}
+}
+
 /**
  * Perform all actions when leaving a station.
  * @pre this->current_order.IsType(OT_LOADING)
@@ -2495,32 +2594,66 @@ void Vehicle::LeaveStation()
 	assert(this->current_order.IsType(OT_LOADING));
 
 	delete this->cargo_payment;
+	assert(this->cargo_payment == NULL); // cleared by ~CargoPayment
 
 	/* Only update the timetable if the vehicle was supposed to stop here. */
 	if (this->current_order.GetNonStopType() != ONSF_STOP_EVERYWHERE) UpdateVehicleTimetable(this, false);
 
-	if ((this->current_order.GetLoadType() & OLFB_NO_LOAD) == 0 ||
-			(this->current_order.GetUnloadType() & OUFB_NO_UNLOAD) == 0) {
-		if (this->current_order.CanLeaveWithCargo(this->last_loading_station != INVALID_STATION)) {
+	uint32 cargoes_can_load_unload = this->current_order.FilterLoadUnloadTypeCargoMask([&](const Order *o, CargoID cargo) {
+		return ((o->GetCargoLoadType(cargo) & OLFB_NO_LOAD) == 0) || ((o->GetCargoUnloadType(cargo) & OUFB_NO_UNLOAD) == 0);
+	});
+	uint32 has_cargo_mask = this->GetLastLoadingStationValidCargoMask();
+	uint32 cargoes_can_leave_with_cargo = FilterCargoMask([&](CargoID cargo) {
+		return this->current_order.CanLeaveWithCargo(HasBit(has_cargo_mask, cargo), cargo);
+	}, cargoes_can_load_unload);
+
+	if (cargoes_can_load_unload != 0) {
+		if (cargoes_can_leave_with_cargo != 0) {
 			/* Refresh next hop stats to make sure we've done that at least once
 			 * during the stop and that refit_cap == cargo_cap for each vehicle in
 			 * the consist. */
 			this->ResetRefitCaps();
-			LinkRefresher::Run(this);
+			LinkRefresher::Run(this, true, false, cargoes_can_leave_with_cargo);
+		}
+
+		if (cargoes_can_leave_with_cargo == (uint32) ~0) {
+			/* can leave with all cargoes */
 
 			/* if the vehicle could load here or could stop with cargo loaded set the last loading station */
 			this->last_loading_station = this->last_station_visited;
-		} else {
+			ClrBit(this->vehicle_flags, VF_LAST_LOAD_ST_SEP);
+		} else if (cargoes_can_leave_with_cargo == 0) {
+			/* can leave with no cargoes */
+
 			/* if the vehicle couldn't load and had to unload or transfer everything
 			 * set the last loading station to invalid as it will leave empty. */
 			this->last_loading_station = INVALID_STATION;
+			ClrBit(this->vehicle_flags, VF_LAST_LOAD_ST_SEP);
+		} else {
+			/* mix of cargoes loadable or could not leave with all cargoes */
+
+			/* NB: this is saved here as we overwrite it on the first iteration of the loop below */
+			StationID head_last_loading_station = this->last_loading_station;
+			for (Vehicle *u = this; u != NULL; u = u->Next()) {
+				StationID last_loading_station = HasBit(this->vehicle_flags, VF_LAST_LOAD_ST_SEP) ? u->last_loading_station : head_last_loading_station;
+				if (u->cargo_type < NUM_CARGO && HasBit(cargoes_can_load_unload, u->cargo_type)) {
+					if (HasBit(cargoes_can_leave_with_cargo, u->cargo_type)) {
+						u->last_loading_station = this->last_station_visited;
+					} else {
+						u->last_loading_station = INVALID_STATION;
+					}
+				} else {
+					u->last_loading_station = last_loading_station;
+				}
+			}
+			SetBit(this->vehicle_flags, VF_LAST_LOAD_ST_SEP);
 		}
 	}
 
 	this->current_order.MakeLeaveStation();
 	Station *st = Station::Get(this->last_station_visited);
 	this->CancelReservation(INVALID_STATION, st);
-	st->loading_vehicles.remove(this);
+	st->loading_vehicles.erase(std::remove(st->loading_vehicles.begin(), st->loading_vehicles.end(), this), st->loading_vehicles.end());
 
 	HideFillingPercent(&this->fill_percent_te_id);
 	trip_occupancy = CalcPercentVehicleFilled(this, NULL);
@@ -2663,40 +2796,12 @@ void Vehicle::HandleWaiting(bool stop_waiting)
 }
 
 /**
- * Get a map of cargoes and free capacities in the consist.
- * @param capacities Map to be filled with cargoes and capacities.
- */
-void Vehicle::GetConsistFreeCapacities(SmallMap<CargoID, uint> &capacities) const
-{
-	for (const Vehicle *v = this; v != NULL; v = v->Next()) {
-		if (v->cargo_cap == 0) continue;
-		SmallPair<CargoID, uint> *pair = capacities.Find(v->cargo_type);
-		if (pair == capacities.End()) {
-			pair = capacities.Append();
-			pair->first = v->cargo_type;
-			pair->second = v->cargo_cap - v->cargo.StoredCount();
-		} else {
-			pair->second += v->cargo_cap - v->cargo.StoredCount();
-		}
-	}
-}
-
-uint Vehicle::GetConsistTotalCapacity() const
-{
-	uint result = 0;
-	for (const Vehicle *v = this; v != NULL; v = v->Next()) {
-		result += v->cargo_cap;
-	}
-	return result;
-}
-
-/**
  * Send this vehicle to the depot using the given command(s).
  * @param flags   the command flags (like execute and such).
  * @param command the command to execute.
  * @return the cost of the depot action.
  */
-CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command)
+CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command, TileIndex specific_depot)
 {
 	CommandCost ret = CheckOwnership(this->owner);
 	if (ret.Failed()) return ret;
@@ -2704,7 +2809,7 @@ CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command)
 	if (this->vehstatus & VS_CRASHED) return CMD_ERROR;
 	if (this->IsStoppedInDepot()) return CMD_ERROR;
 
-	if (this->current_order.IsType(OT_GOTO_DEPOT)) {
+	if (this->current_order.IsType(OT_GOTO_DEPOT) && !(command & DEPOT_SPECIFIC)) {
 		bool halt_in_depot = (this->current_order.GetDepotActionType() & ODATFB_HALT) != 0;
 		if (!!(command & DEPOT_SERVICE) == halt_in_depot) {
 			/* We called with a different DEPOT_SERVICE setting.
@@ -2714,9 +2819,7 @@ CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command)
 				if (!(this->current_order.GetDepotOrderType() & ODTFB_BREAKDOWN)) this->current_order.SetDepotOrderType(ODTF_MANUAL);
 				this->current_order.SetDepotActionType(halt_in_depot ? ODATF_SERVICE_ONLY : ODATFB_HALT);
 				this->ClearSeparation();
-				if (_settings_game.order.timetable_separation) {
-					ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
-				}
+				if (HasBit(this->vehicle_flags, VF_TIMETABLE_SEPARATION)) ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
 				SetWindowWidgetDirty(WC_VEHICLE_VIEW, this->index, WID_VV_START_STOP);
 			}
 			return CommandCost();
@@ -2738,9 +2841,7 @@ CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command)
 				this->current_order.SetDepotActionType(this->current_order.GetDepotActionType() == ODATFB_HALT ? ODATF_SERVICE_ONLY : ODATFB_HALT);
 			} else {
 				this->ClearSeparation();
-				if (_settings_game.order.timetable_separation) {
-					ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
-				}
+				if (HasBit(this->vehicle_flags, VF_TIMETABLE_SEPARATION)) ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
 
 				this->current_order.MakeDummy();
 				SetWindowWidgetDirty(WC_VEHICLE_VIEW, this->index, WID_VV_START_STOP);
@@ -2753,7 +2854,17 @@ CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command)
 	DestinationID destination;
 	bool reverse;
 	static const StringID no_depot[] = {STR_ERROR_UNABLE_TO_FIND_ROUTE_TO, STR_ERROR_UNABLE_TO_FIND_LOCAL_DEPOT, STR_ERROR_UNABLE_TO_FIND_LOCAL_DEPOT, STR_ERROR_CAN_T_SEND_AIRCRAFT_TO_HANGAR};
-	if (!this->FindClosestDepot(&location, &destination, &reverse)) return_cmd_error(no_depot[this->type]);
+	if (command & DEPOT_SPECIFIC) {
+		if (!(IsDepotTile(specific_depot) && GetDepotVehicleType(specific_depot) == this->type &&
+				IsInfraTileUsageAllowed(this->type, this->owner, specific_depot))) {
+			return_cmd_error(no_depot[this->type]);
+		}
+		location = specific_depot;
+		destination = (this->type == VEH_AIRCRAFT) ? GetStationIndex(specific_depot) : GetDepotIndex(specific_depot);
+		reverse = false;
+	} else {
+		if (!this->FindClosestDepot(&location, &destination, &reverse)) return_cmd_error(no_depot[this->type]);
+	}
 
 	if (flags & DC_EXEC) {
 		if (this->current_order.IsType(OT_LOADING)) this->LeaveStation();
@@ -3198,7 +3309,7 @@ void Vehicle::RemoveFromShared()
 	this->previous_shared = NULL;
 
 	this->ClearSeparation();
-	if (_settings_game.order.timetable_separation) ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
+	if (HasBit(this->vehicle_flags, VF_TIMETABLE_SEPARATION)) ClrBit(this->vehicle_flags, VF_TIMETABLE_STARTED);
 }
 
 void VehiclesYearlyLoop()

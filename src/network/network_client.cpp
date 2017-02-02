@@ -123,7 +123,9 @@ struct PacketReader : LoadFilter {
  * Create a new socket for the client side of the game connection.
  * @param s The socket to connect with.
  */
-ClientNetworkGameSocketHandler::ClientNetworkGameSocketHandler(SOCKET s) : NetworkGameSocketHandler(s), savegame(NULL), status(STATUS_INACTIVE)
+ClientNetworkGameSocketHandler::ClientNetworkGameSocketHandler (SOCKET s)
+	: NetworkGameSocketHandler (s),
+	  savegame (NULL), token (0), status (STATUS_INACTIVE)
 {
 	assert(ClientNetworkGameSocketHandler::my_client == NULL);
 	ClientNetworkGameSocketHandler::my_client = this;
@@ -253,7 +255,7 @@ void ClientNetworkGameSocketHandler::ClientError(NetworkRecvStatus res)
 			if (_sync_seed_1 != _random.state[0]) {
 #endif
 				NetworkError(STR_NETWORK_ERROR_DESYNC);
-				DEBUG(desync, 1, "sync_err: %08x; %02x; %02X", _date, _date_fract, _tick_skip_counter);
+				DEBUG(desync, 1, "sync_err: date{%08x; %02x; %02x}", _date, _date_fract, _tick_skip_counter);
 				DEBUG(net, 0, "Sync error detected!");
 				my_client->ClientError(NETWORK_RECV_STATUS_DESYNC);
 
@@ -523,7 +525,7 @@ bool ClientNetworkGameSocketHandler::IsConnected()
  *   DEF_CLIENT_RECEIVE_COMMAND has parameter: Packet *p
  ************/
 
-extern bool SafeLoad(const char *filename, int mode, GameMode newgm, Subdirectory subdir, struct LoadFilter *lf = NULL);
+extern bool SafeLoad(const char *filename, SaveLoadOperation fop, DetailedFileType dft, GameMode newgm, Subdirectory subdir, struct LoadFilter *lf = NULL);
 
 NetworkRecvStatus ClientNetworkGameSocketHandler::Receive_SERVER_FULL(Packet *p)
 {
@@ -839,7 +841,7 @@ NetworkRecvStatus ClientNetworkGameSocketHandler::Receive_SERVER_MAP_DONE(Packet
 
 	/* The map is done downloading, load it */
 	ClearErrorMessages();
-	bool load_success = SafeLoad(NULL, SL_LOAD, GM_NORMAL, NO_DIRECTORY, lf);
+	bool load_success = SafeLoad(NULL, SLO_LOAD, DFT_GAME_FILE, GM_NORMAL, NO_DIRECTORY, lf);
 
 	/* Long savegame loads shouldn't affect the lag calculation! */
 	this->last_packet = _realtime_tick;

@@ -39,6 +39,38 @@
 
 #include <time.h>
 
+#ifdef WITH_ALLEGRO
+#	include <allegro.h>
+#endif /* WITH_ALLEGRO */
+#ifdef WITH_FONTCONFIG
+#	include <fontconfig/fontconfig.h>
+#endif /* WITH_FONTCONFIG */
+#ifdef WITH_PNG
+	/* pngconf.h, included by png.h doesn't like something in the
+	 * freetype headers. As such it's not alphabetically sorted. */
+#	include <png.h>
+#endif /* WITH_PNG */
+#ifdef WITH_FREETYPE
+#	include <ft2build.h>
+#	include FT_FREETYPE_H
+#endif /* WITH_FREETYPE */
+#if defined(WITH_ICU_LAYOUT) || defined(WITH_ICU_SORT)
+#	include <unicode/uversion.h>
+#endif /* WITH_ICU_SORT || WITH_ICU_LAYOUT */
+#ifdef WITH_LZMA
+#	include <lzma.h>
+#endif
+#ifdef WITH_LZO
+#include <lzo/lzo1x.h>
+#endif
+#ifdef WITH_SDL
+#	include "sdl.h"
+#	include <SDL.h>
+#endif /* WITH_SDL */
+#ifdef WITH_ZLIB
+# include <zlib.h>
+#endif
+
 #include "safeguards.h"
 
 /* static */ const char *CrashLog::message = NULL;
@@ -50,6 +82,8 @@ char *CrashLog::LogCompiler(char *buffer, const char *last) const
 			buffer += seprintf(buffer, last, " Compiler: "
 #if defined(_MSC_VER)
 			"MSVC %d", _MSC_VER
+#elif defined(__clang__)
+			"clang %s", __clang_version__
 #elif defined(__ICC) && defined(__GNUC__)
 			"ICC %d (GCC %d.%d.%d mode)", __ICC,  __GNUC__, __GNUC_MINOR__, __GNUC_PATCHLEVEL__
 #elif defined(__ICC)
@@ -67,6 +101,12 @@ char *CrashLog::LogCompiler(char *buffer, const char *last) const
 #else
 			return buffer + seprintf(buffer, last,  "\n\n");
 #endif
+}
+
+/* virtual */ char *CrashLog::LogOSVersionDetail(char *buffer, const char *last) const
+{
+	/* Stub implementation; not all OSes support this. */
+	return buffer;
 }
 
 /* virtual */ char *CrashLog::LogRegisters(char *buffer, const char *last) const
@@ -103,7 +143,8 @@ char *CrashLog::LogOpenTTDVersion(char *buffer, const char *last) const
 			" Bits:       %d\n"
 			" Endian:     %s\n"
 			" Dedicated:  %s\n"
-			" Build date: %s\n\n",
+			" Build date: %s\n"
+			" Configure:  %s\n\n",
 			_openttd_revision,
 			_openttd_revision_modified,
 			_openttd_newgrf_version,
@@ -122,7 +163,8 @@ char *CrashLog::LogOpenTTDVersion(char *buffer, const char *last) const
 #else
 			"no",
 #endif
-			_openttd_build_date
+			_openttd_build_date,
+			_openttd_build_configure
 	);
 }
 
@@ -189,39 +231,6 @@ char *CrashLog::LogConfiguration(char *buffer, const char *last) const
 
 	return buffer;
 }
-
-/* Include these here so it's close to where it's actually used. */
-#ifdef WITH_ALLEGRO
-#	include <allegro.h>
-#endif /* WITH_ALLEGRO */
-#ifdef WITH_FONTCONFIG
-#	include <fontconfig/fontconfig.h>
-#endif /* WITH_FONTCONFIG */
-#ifdef WITH_PNG
-	/* pngconf.h, included by png.h doesn't like something in the
-	 * freetype headers. As such it's not alphabetically sorted. */
-#	include <png.h>
-#endif /* WITH_PNG */
-#ifdef WITH_FREETYPE
-#	include <ft2build.h>
-#	include FT_FREETYPE_H
-#endif /* WITH_FREETYPE */
-#if defined(WITH_ICU_LAYOUT) || defined(WITH_ICU_SORT)
-#	include <unicode/uversion.h>
-#endif /* WITH_ICU_SORT || WITH_ICU_LAYOUT */
-#ifdef WITH_LZMA
-#	include <lzma.h>
-#endif
-#ifdef WITH_LZO
-#include <lzo/lzo1x.h>
-#endif
-#ifdef WITH_SDL
-#	include "sdl.h"
-#	include <SDL.h>
-#endif /* WITH_SDL */
-#ifdef WITH_ZLIB
-# include <zlib.h>
-#endif
 
 /**
  * Writes information (versions) of the used libraries.
@@ -344,10 +353,11 @@ char *CrashLog::FillCrashLog(char *buffer, const char *last) const
 #endif
 
 	buffer = this->LogOpenTTDVersion(buffer, last);
-	buffer = this->LogRegisters(buffer, last);
 	buffer = this->LogStacktrace(buffer, last);
+	buffer = this->LogRegisters(buffer, last);
 	buffer = this->LogOSVersion(buffer, last);
 	buffer = this->LogCompiler(buffer, last);
+	buffer = this->LogOSVersionDetail(buffer, last);
 	buffer = this->LogConfiguration(buffer, last);
 	buffer = this->LogLibraries(buffer, last);
 	buffer = this->LogModules(buffer, last);
@@ -406,7 +416,7 @@ bool CrashLog::WriteSavegame(char *filename, const char *filename_last) const
 		seprintf(filename, filename_last, "%scrash.sav", _personal_dir);
 
 		/* Don't do a threaded saveload. */
-		return SaveOrLoad(filename, SL_SAVE, NO_DIRECTORY, false) == SL_OK;
+		return SaveOrLoad(filename, SLO_SAVE, DFT_GAME_FILE, NO_DIRECTORY, false) == SL_OK;
 	} catch (...) {
 		return false;
 	}

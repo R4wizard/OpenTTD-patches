@@ -592,6 +592,7 @@
     <ClInclude Include="..\src\roadstop_base.h" />
     <ClInclude Include="..\src\roadveh.h" />
     <ClInclude Include="..\src\safeguards.h" />
+    <ClInclude Include="..\src\scope.h" />
     <ClInclude Include="..\src\screenshot.h" />
     <ClInclude Include="..\src\sdl.h" />
     <ClInclude Include="..\src\sound\sdl_s.h" />
@@ -678,6 +679,7 @@
     <ClInclude Include="..\src\os\windows\win32.h" />
     <ClInclude Include="..\src\music\win32_m.h" />
     <ClInclude Include="..\src\sound\win32_s.h" />
+    <ClInclude Include="..\src\unit_conversion.h" />
     <ClInclude Include="..\src\video\win32_v.h" />
     <ClInclude Include="..\src\window_func.h" />
     <ClInclude Include="..\src\window_gui.h" />
@@ -691,6 +693,7 @@
     <ClInclude Include="..\src\core\backup_type.hpp" />
     <ClCompile Include="..\src\core\bitmath_func.cpp" />
     <ClInclude Include="..\src\core\bitmath_func.hpp" />
+    <ClInclude Include="..\src\core\container_func.hpp" />
     <ClInclude Include="..\src\core\endian_func.hpp" />
     <ClInclude Include="..\src\core\endian_type.hpp" />
     <ClInclude Include="..\src\core\enum_type.hpp" />
@@ -907,6 +910,7 @@
     <ClCompile Include="..\src\saveload\extended_ver_sl.cpp" />
     <ClCompile Include="..\src\saveload\tbtr_template_replacement_sl.cpp" />
     <ClCompile Include="..\src\saveload\tbtr_template_veh_sl.cpp" />
+    <ClCompile Include="..\src\saveload\bridge_signal_sl.cpp" />
     <ClInclude Include="..\src\table\airport_defaults.h" />
     <ClInclude Include="..\src\table\airport_movement.h" />
     <ClInclude Include="..\src\table\airporttile_ids.h" />
@@ -1157,6 +1161,8 @@
     <ClCompile Include="..\src\script\api\script_window.cpp" />
     <ClCompile Include="..\src\blitter\32bpp_anim.cpp" />
     <ClInclude Include="..\src\blitter\32bpp_anim.hpp" />
+    <ClCompile Include="..\src\blitter\32bpp_anim_sse2.cpp" />
+    <ClInclude Include="..\src\blitter\32bpp_anim_sse2.hpp" />
     <ClCompile Include="..\src\blitter\32bpp_anim_sse4.cpp" />
     <ClInclude Include="..\src\blitter\32bpp_anim_sse4.hpp" />
     <ClCompile Include="..\src\blitter\32bpp_base.cpp" />
@@ -1213,6 +1219,7 @@
     <ClCompile Include="..\src\newgrf_townname.cpp" />
     <ClCompile Include="..\src\bridge_map.cpp" />
     <ClInclude Include="..\src\bridge_map.h" />
+    <ClInclude Include="..\src\bridge_signal_map.h" />
     <ClInclude Include="..\src\clear_map.h" />
     <ClInclude Include="..\src\industry_map.h" />
     <ClInclude Include="..\src\object_map.h" />
@@ -1314,6 +1321,8 @@
     <ClCompile Include="..\src\tracerestrict.cpp" />
     <ClCompile Include="..\src\tracerestrict_gui.cpp" />
     <ClCompile Include="..\src\saveload\tracerestrict_sl.cpp" />
+    <ClCompile Include="..\src\scope_info.cpp" />
+    <ClInclude Include="..\src\scope_info.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\media\openttd.ico" />

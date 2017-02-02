@@ -71,30 +71,34 @@ static inline TrackBits GetTileShipTrackStatus(TileIndex tile)
 	return TrackStatusToTrackBits(GetTileTrackStatus(tile, TRANSPORT_WATER, 0));
 }
 
-static SpriteID GetShipIcon(EngineID engine, EngineImageType image_type)
+static void GetShipIcon(EngineID engine, EngineImageType image_type, VehicleSpriteSeq *result)
 {
 	const Engine *e = Engine::Get(engine);
 	uint8 spritenum = e->u.ship.image_index;
 
 	if (is_custom_sprite(spritenum)) {
-		SpriteID sprite = GetCustomVehicleIcon(engine, DIR_W, image_type);
-		if (sprite != 0) return sprite;
+		GetCustomVehicleIcon(engine, DIR_W, image_type, result);
+		if (result->IsValid()) return;
 
 		spritenum = e->original_image_index;
 	}
 
 	assert(IsValidImageIndex<VEH_SHIP>(spritenum));
-	return DIR_W + _ship_sprites[spritenum];
+	result->Set(DIR_W + _ship_sprites[spritenum]);
 }
 
 void DrawShipEngine(int left, int right, int preferred_x, int y, EngineID engine, PaletteID pal, EngineImageType image_type)
 {
-	SpriteID sprite = GetShipIcon(engine, image_type);
-	const Sprite *real_sprite = GetSprite(sprite, ST_NORMAL);
+	VehicleSpriteSeq seq;
+	GetShipIcon(engine, image_type, &seq);
+
+	Rect rect;
+	seq.GetBounds(&rect);
 	preferred_x = Clamp(preferred_x,
-			left - UnScaleGUI(real_sprite->x_offs),
-			right - UnScaleGUI(real_sprite->width) - UnScaleGUI(real_sprite->x_offs));
-	DrawSprite(sprite, pal, preferred_x, y);
+			left - UnScaleGUI(rect.left),
+			right - UnScaleGUI(rect.right));
+
+	seq.Draw(preferred_x, y, pal, pal == PALETTE_CRASH);
 }
 
 /**
@@ -108,27 +112,31 @@ void DrawShipEngine(int left, int right, int preferred_x, int y, EngineID engine
  */
 void GetShipSpriteSize(EngineID engine, uint &width, uint &height, int &xoffs, int &yoffs, EngineImageType image_type)
 {
-	const Sprite *spr = GetSprite(GetShipIcon(engine, image_type), ST_NORMAL);
+	VehicleSpriteSeq seq;
+	GetShipIcon(engine, image_type, &seq);
 
-	width  = UnScaleGUI(spr->width);
-	height = UnScaleGUI(spr->height);
-	xoffs  = UnScaleGUI(spr->x_offs);
-	yoffs  = UnScaleGUI(spr->y_offs);
+	Rect rect;
+	seq.GetBounds(&rect);
+
+	width  = UnScaleGUI(rect.right - rect.left + 1);
+	height = UnScaleGUI(rect.bottom - rect.top + 1);
+	xoffs  = UnScaleGUI(rect.left);
+	yoffs  = UnScaleGUI(rect.top);
 }
 
-SpriteID Ship::GetImage(Direction direction, EngineImageType image_type) const
+void Ship::GetImage(Direction direction, EngineImageType image_type, VehicleSpriteSeq *result) const
 {
 	uint8 spritenum = this->spritenum;
 
 	if (is_custom_sprite(spritenum)) {
-		SpriteID sprite = GetCustomVehicleSprite(this, direction, image_type);
-		if (sprite != 0) return sprite;
+		GetCustomVehicleSprite(this, direction, image_type, result);
+		if (result->IsValid()) return;
 
 		spritenum = this->GetEngine()->original_image_index;
 	}
 
 	assert(IsValidImageIndex<VEH_SHIP>(spritenum));
-	return _ship_sprites[spritenum] + direction;
+	result->Set(_ship_sprites[spritenum] + direction);
 }
 
 static const Depot *FindClosestShipDepot(const Vehicle *v, uint max_distance)
@@ -259,6 +267,7 @@ Trackdir Ship::GetVehicleTrackdir() const
 void Ship::MarkDirty()
 {
 	this->colourmap = PAL_NONE;
+	this->cur_image_valid_dir = INVALID_DIR;
 	this->UpdateViewport(true, false);
 	this->UpdateCache();
 }
@@ -768,15 +777,15 @@ CommandCost CmdBuildShip(TileIndex tile, DoCommandFlag flags, const Engine *e, u
 		v->SetServiceInterval(Company::Get(_current_company)->settings.vehicle.servint_ships);
 		v->date_of_last_service = _date;
 		v->build_year = _cur_year;
-		v->cur_image = SPR_IMG_QUERY;
+		v->sprite_seq.Set(SPR_IMG_QUERY);
 		v->random_bits = VehicleRandomBits();
 
 		v->UpdateCache();
 
 		if (e->flags & ENGINE_EXCLUSIVE_PREVIEW) SetBit(v->vehicle_flags, VF_BUILT_AS_PROTOTYPE);
 		v->SetServiceIntervalIsPercent(Company::Get(_current_company)->settings.vehicle.servint_ispercent);
-		SB(v->vehicle_flags, VF_AUTOMATE_TIMETABLE, 1,
-				_settings_game.order.timetable_automated && Company::Get(_current_company)->settings.vehicle.auto_timetable_by_default);
+		SB(v->vehicle_flags, VF_AUTOMATE_TIMETABLE, 1, Company::Get(_current_company)->settings.vehicle.auto_timetable_by_default);
+		SB(v->vehicle_flags, VF_TIMETABLE_SEPARATION, 1, Company::Get(_current_company)->settings.vehicle.auto_separation_by_default);
 
 		v->InvalidateNewGRFCacheOfChain();
 

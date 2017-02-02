@@ -34,8 +34,11 @@
 #include "smallmap_gui.h"
 #include "window_func.h"
 #include "debug.h"
+#include "unit_conversion.h"
 #include "game/game_text.hpp"
-#include "network/network_content_gui.h"
+#ifdef ENABLE_NETWORK
+#	include "network/network_content_gui.h"
+#endif /* ENABLE_NETWORK */
 #include <stack>
 
 #include "table/strings.h"
@@ -363,6 +366,15 @@ static char *FormatZerofillNumber(char *buff, int64 number, int64 count, const c
 static char *FormatHexNumber(char *buff, uint64 number, const char *last)
 {
 	return buff + seprintf(buff, last, "0x" OTTD_PRINTFHEX64, number);
+}
+
+WChar GetDecimalSeparatorChar()
+{
+	WChar decimal_char = '.';
+	const char *decimal_separator = _settings_game.locale.digit_decimal_separator;
+	if (decimal_separator == NULL) decimal_separator = _langpack->digit_decimal_separator;
+	if (decimal_separator != NULL) Utf8Decode(&decimal_char, decimal_separator);
+	return decimal_char;
 }
 
 /**
@@ -782,6 +794,161 @@ uint ConvertDisplaySpeedToKmhishSpeed(uint speed)
 {
 	return _units_velocity[_settings_game.locale.units_velocity].c.FromDisplay(speed * 16, true, 10);
 }
+
+/**
+ * Convert the given internal weight to the display weight.
+ * @param weight the weight to convert
+ * @return the converted weight.
+ */
+uint ConvertWeightToDisplayWeight(uint weight)
+{
+	return _units_weight[_settings_game.locale.units_weight].c.ToDisplay(weight);
+}
+
+/**
+ * Convert the given display weight to the (internal) weight.
+ * @param weight the weight to convert
+ * @return the converted weight.
+ */
+uint ConvertDisplayWeightToWeight(uint weight)
+{
+	return _units_weight[_settings_game.locale.units_weight].c.FromDisplay(weight);
+}
+
+/**
+ * Convert the given internal power to the display power.
+ * @param power the power to convert
+ * @return the converted power.
+ */
+uint ConvertPowerToDisplayPower(uint power)
+{
+	return _units_power[_settings_game.locale.units_power].c.ToDisplay(power);
+}
+
+/**
+ * Convert the given display power to the (internal) power.
+ * @param power the power to convert
+ * @return the converted power.
+ */
+uint ConvertDisplayPowerToPower(uint power)
+{
+	return _units_power[_settings_game.locale.units_power].c.FromDisplay(power);
+}
+
+/**
+ * Convert the given internal force to the display force.
+ * @param force the force to convert
+ * @return the converted force.
+ */
+uint ConvertForceToDisplayForce(uint force)
+{
+	return _units_force[_settings_game.locale.units_force].c.ToDisplay(force);
+}
+
+/**
+ * Convert the given display force to the (internal) force.
+ * @param force the force to convert
+ * @return the converted force.
+ */
+uint ConvertDisplayForceToForce(uint force)
+{
+	return _units_force[_settings_game.locale.units_force].c.FromDisplay(force);
+}
+
+static void ConvertWeightRatioToDisplay(const Units &unit, uint ratio, int64 &value, int64 &decimals)
+{
+	int64 input = ratio * 100;
+	decimals = 2;
+	if (_settings_game.locale.units_weight == 2) {
+		input *= 1000;
+		decimals += 3;
+	}
+
+	const UnitConversion &weight_conv = _units_weight[_settings_game.locale.units_weight].c;
+	UnitConversion conv = unit.c;
+	conv.multiplier <<= weight_conv.shift;
+
+	value = conv.ToDisplay(input) / (100 * weight_conv.multiplier);
+
+	if (unit.c.multiplier >> unit.c.shift > 100) {
+		value /= 100;
+		decimals -= 2;
+	}
+}
+
+static uint ConvertDisplayToWeightRatio(const Units &unit, double in)
+{
+	const UnitConversion &weight_conv = _units_weight[_settings_game.locale.units_weight].c;
+	UnitConversion conv = unit.c;
+	conv.multiplier <<= weight_conv.shift;
+	int64 multiplier = _settings_game.locale.units_weight == 2 ? 1000 : 1;
+
+	return conv.FromDisplay(in * 100 * multiplier * weight_conv.multiplier, true, multiplier);
+}
+
+static char *FormatUnitWeightRatio(char *buff, const char *last, const Units &unit, int64 raw_value)
+{
+	const char *unit_str = GetStringPtr(unit.s);
+	const char *weight_str = GetStringPtr(_units_weight[_settings_game.locale.units_weight].s);
+
+	char tmp_buffer[32];
+	strecpy(tmp_buffer, unit_str, lastof(tmp_buffer));
+	char *insert_pt = str_replace_wchar(tmp_buffer, lastof(tmp_buffer), SCC_COMMA, SCC_DECIMAL);
+	strecpy(insert_pt, weight_str, lastof(tmp_buffer));
+	str_replace_wchar(insert_pt, lastof(tmp_buffer), SCC_COMMA, '/');
+	str_replace_wchar(insert_pt, lastof(tmp_buffer), 0xA0 /* NBSP */, 0);
+
+	int64 value, decimals;
+	ConvertWeightRatioToDisplay(unit, raw_value, value, decimals);
+
+	int64 args_array[2] = { value, decimals };
+	StringParameters tmp_params(args_array);
+	buff = FormatString(buff, tmp_buffer, &tmp_params, last);
+	return buff;
+}
+
+/**
+ * Convert the given internal power / weight ratio to the display decimal.
+ * @param ratio the power / weight ratio to convert
+ * @param value the output value
+ * @param decimals the output decimal offset
+ */
+void ConvertPowerWeightRatioToDisplay(uint ratio, int64 &value, int64 &decimals)
+{
+	ConvertWeightRatioToDisplay(_units_power[_settings_game.locale.units_power], ratio, value, decimals);
+}
+
+/**
+ * Convert the given internal force / weight ratio to the display decimal.
+ * @param ratio the force / weight ratio to convert
+ * @param value the output value
+ * @param decimals the output decimal offset
+ */
+void ConvertForceWeightRatioToDisplay(uint ratio, int64 &value, int64 &decimals)
+{
+	ConvertWeightRatioToDisplay(_units_force[_settings_game.locale.units_force], ratio, value, decimals);
+}
+
+/**
+ * Convert the given display value to the internal power / weight ratio.
+ * @param in the display value
+ * @return the converted power / weight ratio.
+ */
+uint ConvertDisplayToPowerWeightRatio(double in)
+{
+	return ConvertDisplayToWeightRatio(_units_power[_settings_game.locale.units_power], in);
+}
+
+/**
+ * Convert the given display value to the internal force / weight ratio.
+ * @param in the display value
+ * @return the converted force / weight ratio.
+ */
+uint ConvertDisplayToForceWeightRatio(double in)
+{
+	return ConvertDisplayToWeightRatio(_units_force[_settings_game.locale.units_force], in);
+}
+
 /**
  * Parse most format codes within a string and write the result to a buffer.
  * @param buff  The buffer to write the final string to.
@@ -1080,6 +1247,12 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				break;
 			}
 
+			case SCC_DECIMAL1: {// {DECIMAL1}
+				int64 number = args->GetInt64(SCC_DECIMAL1);
+				buff = FormatCommaNumber(buff, number, last, 1);
+				break;
+			}
+
 			case SCC_NUM: // {NUM}
 				buff = FormatNoCommaNumber(buff, args->GetInt64(SCC_NUM), last);
 				break;
@@ -1326,6 +1499,22 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				int64 args_array[1] = {_units_weight[_settings_game.locale.units_weight].c.ToDisplay(args->GetInt64(SCC_WEIGHT_LONG))};
 				StringParameters tmp_params(args_array);
 				buff = FormatString(buff, GetStringPtr(_units_weight[_settings_game.locale.units_weight].l), &tmp_params, last);
+				break;
+			}
+
+			case SCC_POWER_WEIGHT_RATIO: { // {POWER_WEIGHT_RATIO}
+				assert(_settings_game.locale.units_power < lengthof(_units_power));
+				assert(_settings_game.locale.units_weight < lengthof(_units_weight));
+
+				buff = FormatUnitWeightRatio(buff, last, _units_power[_settings_game.locale.units_power], args->GetInt64());
+				break;
+			}
+
+			case SCC_FORCE_WEIGHT_RATIO: { // {FORCE_WEIGHT_RATIO}
+				assert(_settings_game.locale.units_force < lengthof(_units_force));
+				assert(_settings_game.locale.units_weight < lengthof(_units_weight));
+
+				buff = FormatUnitWeightRatio(buff, last, _units_force[_settings_game.locale.units_force], args->GetInt64());
 				break;
 			}
 
@@ -1874,7 +2063,9 @@ bool ReadLanguagePack(const LanguageMetadata *lang)
 	SortIndustryTypes();
 	BuildIndustriesLegend();
 	SortNetworkLanguages();
+#ifdef ENABLE_NETWORK
 	BuildContentTypeStringList();
+#endif /* ENABLE_NETWORK */
 	InvalidateWindowClassesData(WC_BUILD_VEHICLE);      // Build vehicle window.
 	InvalidateWindowClassesData(WC_TRAINS_LIST);        // Train group window.
 	InvalidateWindowClassesData(WC_ROADVEH_LIST);       // Road vehicle group window.

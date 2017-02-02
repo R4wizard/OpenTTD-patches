@@ -1589,9 +1589,11 @@ static SettingsContainer &GetSettingsTree()
 			interface->Add(new SettingEntry("gui.prefer_teamchat"));
 			interface->Add(new SettingEntry("gui.advanced_vehicle_list"));
 			interface->Add(new SettingEntry("gui.timetable_in_ticks"));
+			interface->Add(new SettingEntry("gui.timetable_leftover_ticks"));
 			interface->Add(new SettingEntry("gui.timetable_arrival_departure"));
 			interface->Add(new SettingEntry("gui.expenses_layout"));
 			interface->Add(new SettingEntry("gui.show_train_length_in_details"));
+			interface->Add(new SettingEntry("gui.show_train_weight_ratios_in_details"));
 			interface->Add(new SettingEntry("gui.show_vehicle_group_in_details"));
 			interface->Add(new SettingEntry("gui.show_vehicle_list_company_colour"));
 		}
@@ -1631,15 +1633,15 @@ static SettingsContainer &GetSettingsTree()
 			company->Add(new SettingEntry("company.engine_renew"));
 			company->Add(new SettingEntry("company.engine_renew_months"));
 			company->Add(new SettingEntry("company.engine_renew_money"));
-			company->Add(new SettingEntry("vehicle.pay_for_repair"));
-			company->Add(new SettingEntry("vehicle.repair_cost"));
 			company->Add(new SettingEntry("vehicle.servint_ispercent"));
 			company->Add(new SettingEntry("vehicle.servint_trains"));
 			company->Add(new SettingEntry("vehicle.servint_roadveh"));
 			company->Add(new SettingEntry("vehicle.servint_ships"));
 			company->Add(new SettingEntry("vehicle.servint_aircraft"));
 			company->Add(new SettingEntry("vehicle.auto_timetable_by_default"));
+			company->Add(new SettingEntry("vehicle.auto_separation_by_default"));
 			company->Add(new SettingEntry("auto_timetable_separation_rate"));
+			company->Add(new SettingEntry("timetable_autofill_rounding"));
 			company->Add(new SettingEntry("order_occupancy_smoothness"));
 			company->Add(new SettingEntry("company.infra_others_buy_in_depot[0]"));
 			company->Add(new SettingEntry("company.infra_others_buy_in_depot[1]"));
@@ -1687,8 +1689,6 @@ static SettingsContainer &GetSettingsTree()
 
 			vehicles->Add(new SettingEntry("order.no_servicing_if_no_breakdowns"));
 			vehicles->Add(new SettingEntry("order.serviceathelipad"));
-			vehicles->Add(new SettingEntry("order.timetable_automated"));
-			vehicles->Add(new SettingEntry("order.timetable_separation"));
 			vehicles->Add(new SettingEntry("vehicle.adjacent_crossings"));
 		}
 
@@ -1723,6 +1723,8 @@ static SettingsContainer &GetSettingsTree()
 			disasters->Add(new SettingEntry("difficulty.economy"));
 			disasters->Add(new SettingEntry("difficulty.vehicle_breakdowns"));
 			disasters->Add(new SettingEntry("vehicle.improved_breakdowns"));
+			disasters->Add(new SettingEntry("vehicle.pay_for_repair"));
+			disasters->Add(new SettingEntry("vehicle.repair_cost"));
 			disasters->Add(new SettingEntry("vehicle.plane_crashes"));
 			disasters->Add(new SettingEntry("vehicle.no_train_crash_other_company"));
 		}
@@ -1763,8 +1765,8 @@ static SettingsContainer &GetSettingsTree()
 				towns->Add(new SettingEntry("economy.allow_town_roads"));
 				towns->Add(new SettingEntry("economy.allow_town_level_crossings"));
 				towns->Add(new SettingEntry("economy.found_town"));
-				towns->Add(new SettingEntry("economy.town_cargo_factor"));
-				towns->Add(new SettingEntry("economy.allow_placing_houses"));
+				towns->Add(new SettingEntry("economy.town_cargo_scale_factor"));
+				towns->Add(new SettingEntry("economy.random_road_reconstruction"));
 			}
 
 			SettingsPage *industries = environment->Add(new SettingsPage(STR_CONFIG_SETTING_ENVIRONMENT_INDUSTRIES));
@@ -1799,6 +1801,7 @@ static SettingsContainer &GetSettingsTree()
 			}
 
 			environment->Add(new SettingEntry("station.modified_catchment"));
+			environment->Add(new SettingEntry("station.catchment_increase"));
 		}
 
 		SettingsPage *ai = main->Add(new SettingsPage(STR_CONFIG_SETTING_AI));
@@ -2255,8 +2258,13 @@ struct GameSettingsWindow : Window {
 				if (sd->desc.flags & SGF_CURRENCY) value *= _currency->rate;
 
 				this->valuewindow_entry = pe;
-				SetDParam(0, value);
-				ShowQueryString(STR_JUST_INT, STR_CONFIG_SETTING_QUERY_CAPTION, 10, this, CS_NUMERAL, QSF_ENABLE_DEFAULT);
+				if (sd->desc.flags & SGF_DECIMAL1) {
+					SetDParam(0, value);
+					ShowQueryString(STR_JUST_DECIMAL1, STR_CONFIG_SETTING_QUERY_CAPTION, 10, this, CS_NUMERAL_DECIMAL, QSF_ENABLE_DEFAULT);
+				} else {
+					SetDParam(0, value);
+					ShowQueryString(STR_JUST_INT, STR_CONFIG_SETTING_QUERY_CAPTION, 10, this, CS_NUMERAL, QSF_ENABLE_DEFAULT);
+				}
 			}
 			this->SetDisplayedHelpText(pe);
 		}
@@ -2281,7 +2289,11 @@ struct GameSettingsWindow : Window {
 
 		int32 value;
 		if (!StrEmpty(str)) {
-			value = atoi(str);
+			if (sd->desc.flags & SGF_DECIMAL1) {
+				value = atof(str) * 10;
+			} else {
+				value = atoi(str);
+			}
 
 			/* Save the correct currency-translated value */
 			if (sd->desc.flags & SGF_CURRENCY) value /= _currency->rate;

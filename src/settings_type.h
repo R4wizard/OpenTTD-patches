@@ -143,6 +143,7 @@ struct GUISettings {
 	bool   enable_signal_gui;                ///< show the signal GUI when the signal button is pressed
 	Year   coloured_news_year;               ///< when does newspaper become coloured?
 	bool   timetable_in_ticks;               ///< whether to show the timetable in ticks rather than days
+	bool   timetable_leftover_ticks;         ///< whether to show leftover ticks after converting to minutes/days, in the timetable
 	bool   time_in_minutes;                  ///< whether to use the hh:mm conversion when printing dates
 	bool   timetable_start_text_entry;       ///< whether to enter timetable start times as text (hhmm format)
 	uint8  ticks_per_minute;                 ///< how many ticks per minute
@@ -167,6 +168,7 @@ struct GUISettings {
 	byte   missing_strings_threshold;        ///< the number of missing strings before showing the warning
 	uint8  graph_line_thickness;             ///< the thickness of the lines in the various graph guis
 	bool   show_train_length_in_details;     ///< show train length in vehicle details window top widget
+	bool   show_train_weight_ratios_in_details;   ///< show train weight ratios in vehicle details window top widget
 	bool   show_vehicle_group_in_details;    ///< show vehicle group in vehicle details window top widget
 	bool   show_restricted_signal_default;   ///< Show restricted electric signals using the default sprite
 	uint8  osk_activation;                   ///< Mouse gesture to trigger the OSK.
@@ -481,11 +483,10 @@ struct OrderSettings {
 	bool   gradual_loading;                  ///< load vehicles gradually
 	bool   selectgoods;                      ///< only send the goods to station if a train has been there
 	bool   no_servicing_if_no_breakdowns;    ///< don't send vehicles to depot when breakdowns are disabled
-	bool   timetable_automated;              ///< whether to automatically manage timetables
-	bool   timetable_separation;             ///< whether to perform automatic separation based on timetable
 	bool   serviceathelipad;                 ///< service helicopters at helipads automatically (no need to send to depot)
 
 	uint8  old_occupancy_smoothness;         ///< moved to company settings: percentage smoothness of occupancy measurement changes
+	bool   old_timetable_separation;         ///< moved to company settings: whether to perform automatic separation based on timetable
 	uint8  old_timetable_separation_rate;    ///< moved to company settings: percentage of timetable separation change to apply
 };
 
@@ -544,10 +545,11 @@ struct EconomySettings {
 	uint   sharing_fee[4];                   ///< fees for infrastructure sharing for rail/road/water/air
 	bool   sharing_payment_in_debt;          ///< allow fee payment for companies with more loan than money (switch off to prevent MP exploits)
 	bool   allow_town_level_crossings;       ///< towns are allowed to build level crossings
-	int8   town_cargo_factor;                ///< power-of-two multiplier for town (passenger, mail) generation. May be negative.
-	bool   allow_placing_houses;             ///< whether to allow placing houses manually also during gameplay, not only in scenario editor
+	int8   old_town_cargo_factor;            ///< old power-of-two multiplier for town (passenger, mail) generation. May be negative.
+	int16  town_cargo_scale_factor;          ///< scaled power-of-two multiplier for town (passenger, mail) generation. May be negative.
 	bool   infrastructure_maintenance;       ///< enable monthly maintenance fee for owner infrastructure
 	uint8  day_length_factor;                ///< factor which the length of day is multiplied
+	uint16 random_road_reconstruction;       ///< chance out of 1000 per tile loop for towns to start random road re-construction
 };
 
 struct LinkGraphSettings {
@@ -578,6 +580,7 @@ struct StationSettings {
 	bool   distant_join_stations;            ///< allow to join non-adjacent stations
 	bool   never_expire_airports;            ///< never expire airports
 	byte   station_spread;                   ///< amount a station may spread
+	byte   catchment_increase;               ///< amount by which station catchment is increased
 };
 
 /** Default settings for vehicles. */
@@ -588,6 +591,7 @@ struct VehicleDefaultSettings {
 	uint16 servint_aircraft;                 ///< service interval for aircraft
 	uint16 servint_ships;                    ///< service interval for ships
 	bool   auto_timetable_by_default;        ///< use automatic timetables by default
+	bool   auto_separation_by_default;       ///< use automatic timetable separation by default
 };
 
 /** Settings that can be set per company. */
@@ -600,6 +604,7 @@ struct CompanySettings {
 	uint8 order_occupancy_smoothness;        ///< percentage smoothness of occupancy measurement changes
 	uint8  auto_timetable_separation_rate;   ///< percentage of auto timetable separation change to apply
 	bool infra_others_buy_in_depot[4];       ///< other companies can buy/autorenew in this companies depots (where infra sharing enabled)
+	uint16 timetable_autofill_rounding;      ///< round up timetable times to be a multiple of this number of ticks
 };
 
 /** All settings together for the game. */

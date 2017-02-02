@@ -12,6 +12,8 @@
 #ifndef BITMATH_FUNC_HPP
 #define BITMATH_FUNC_HPP
 
+#include <type_traits>
+
 /**
  * Fetch \a n bits from \a x, started at bit \a s.
  *
@@ -185,6 +187,18 @@ static inline T ToggleBit(T &x, const uint8 y)
 	return x = (T)(x ^ ((T)1U << y));
 }
 
+#ifdef WITH_BITMATH_BUILTINS
+
+#define FIND_FIRST_BIT(x) FindFirstBit(x)
+
+inline uint8 FindFirstBit(uint32 x)
+{
+	if (x == 0) return 0;
+
+	return __builtin_ctz(x);
+}
+
+#else
 
 /** Lookup table to check which bit is set in a 6 bit variable */
 extern const uint8 _ffb_64[64];
@@ -200,6 +214,12 @@ extern const uint8 _ffb_64[64];
  * @return The first position of a bit started from the LSB or 0 if x is 0.
  */
 #define FIND_FIRST_BIT(x) _ffb_64[(x)]
+
+uint8 FindFirstBit(uint32 x);
+
+#endif
+
+uint8 FindLastBit(uint64 x);
 
 /**
  * Finds the position of the first non-zero bit in an integer.
@@ -223,9 +243,6 @@ static inline uint8 FindFirstBit2x64(const int value)
 		return FIND_FIRST_BIT(value & 0x3F);
 	}
 }
-
-uint8 FindFirstBit(uint32 x);
-uint8 FindLastBit(uint64 x);
 
 /**
  * Clear the first bit in an integer.
@@ -252,6 +269,16 @@ static inline T KillFirstBit(T value)
 template <typename T>
 static inline uint CountBits(T value)
 {
+#ifdef WITH_BITMATH_BUILTINS
+	typename std::make_unsigned<T>::type unsigned_value = value;
+	if (sizeof(T) <= sizeof(unsigned int)) {
+		return __builtin_popcount(unsigned_value);
+	} else if (sizeof(T) == sizeof(unsigned long)) {
+		return __builtin_popcountl(unsigned_value);
+	} else {
+		return __builtin_popcountll(unsigned_value);
+	}
+#else
 	uint num;
 
 	/* This loop is only called once for every bit set by clearing the lowest
@@ -264,6 +291,7 @@ static inline uint CountBits(T value)
 	}
 
 	return num;
+#endif
 }
 
 /**
@@ -379,12 +407,12 @@ static inline T ROR(const T x, const uint8 n)
 	 */
 	static inline uint32 BSWAP32(uint32 x)
 	{
-#if !defined(__ICC) && defined(__GNUC__) && ((__GNUC__ > 4) || ((__GNUC__ == 4)  && __GNUC_MINOR__ >= 3))
+#if !defined(__ICC) && (defined(__GNUC__) || defined(__clang__))
 		/* GCC >= 4.3 provides a builtin, resulting in faster code */
 		return (uint32)__builtin_bswap32((int32)x);
 #else
 		return ((x >> 24) & 0xFF) | ((x >> 8) & 0xFF00) | ((x << 8) & 0xFF0000) | ((x << 24) & 0xFF000000);
-#endif /* defined(__GNUC__) */
+#endif /* __GNUC__ || __clang__ */
 	}
 
 	/**

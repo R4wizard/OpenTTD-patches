@@ -350,7 +350,7 @@ CommandCost CmdDeleteGroup(TileIndex tile, DoCommandFlag flags, uint32 p1, uint3
 		VehicleType vt = g->vehicle_type;
 
 		/* Delete all template replacements using the just deleted group */
-		deleteIllegalTemplateReplacements(g->index);
+		DeleteTemplateReplacementsByGroupID(g->index);
 
 		/* notify tracerestrict that group is about to be deleted */
 		TraceRestrictRemoveGroupID(g->index);
@@ -447,7 +447,7 @@ CommandCost CmdCreateGroupFromList(TileIndex tile, DoCommandFlag flags, uint32 p
 {
 	VehicleListIdentifier vli;
 	VehicleList list;
-	if (!vli.Unpack(p1)) return CMD_ERROR;
+	if (!vli.UnpackIfValid(p1)) return CMD_ERROR;
 	if (!IsCompanyBuildableVehicleType(vli.vtype)) return CMD_ERROR;
 	if (!GenerateVehicleSortList(&list, vli)) return CMD_ERROR;
 
@@ -766,7 +766,10 @@ void RemoveAllGroupsForCompany(const CompanyID company)
 	Group *g;
 
 	FOR_ALL_GROUPS(g) {
-		if (company == g->owner) delete g;
+		if (company == g->owner) {
+			DeleteTemplateReplacementsByGroupID(g->index);
+			delete g;
+		}
 	}
 }
 

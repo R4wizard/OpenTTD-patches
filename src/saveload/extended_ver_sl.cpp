@@ -47,18 +47,18 @@ std::vector<uint32> _sl_xv_discardable_chunk_ids;           ///< list of chunks 
 static const uint32 _sl_xv_slxi_chunk_version = 0;          ///< current version os SLXI chunk
 
 const SlxiSubChunkInfo _sl_xv_sub_chunk_infos[] = {
-	{ XSLFI_TRACE_RESTRICT,         XSCF_NULL,                5,   5, "tracerestrict",             NULL, NULL, "TRRM,TRRP" },
+	{ XSLFI_TRACE_RESTRICT,         XSCF_NULL,                6,   6, "tracerestrict",             NULL, NULL, "TRRM,TRRP" },
 	{ XSLFI_TRACE_RESTRICT_OWNER,   XSCF_NULL,                1,   1, "tracerestrict_owner",       NULL, NULL, NULL        },
 	{ XSLFI_PROG_SIGS,              XSCF_NULL,                1,   1, "programmable_signals",      NULL, NULL, "SPRG"      },
 	{ XSLFI_ADJACENT_CROSSINGS,     XSCF_NULL,                1,   1, "adjacent_crossings",        NULL, NULL, NULL        },
 	{ XSLFI_DEPARTURE_BOARDS,       XSCF_IGNORABLE_UNKNOWN,   1,   1, "departure_boards",          NULL, NULL, NULL        },
-	{ XSLFI_TIMETABLES_START_TICKS, XSCF_NULL,                1,   1, "timetable_start_ticks",     NULL, NULL, NULL        },
-	{ XSLFI_TOWN_CARGO_ADJ,         XSCF_IGNORABLE_UNKNOWN,   1,   1, "town_cargo_adj",            NULL, NULL, NULL        },
-	{ XSLFI_SIG_TUNNEL_BRIDGE,      XSCF_NULL,                2,   2, "signal_tunnel_bridge",      NULL, NULL, NULL        },
-	{ XSLFI_IMPROVED_BREAKDOWNS,    XSCF_NULL,                3,   3, "improved_breakdowns",       NULL, NULL, NULL        },
+	{ XSLFI_TIMETABLES_START_TICKS, XSCF_NULL,                2,   2, "timetable_start_ticks",     NULL, NULL, NULL        },
+	{ XSLFI_TOWN_CARGO_ADJ,         XSCF_IGNORABLE_UNKNOWN,   2,   2, "town_cargo_adj",            NULL, NULL, NULL        },
+	{ XSLFI_SIG_TUNNEL_BRIDGE,      XSCF_NULL,                4,   4, "signal_tunnel_bridge",      NULL, NULL, "XBSS"      },
+	{ XSLFI_IMPROVED_BREAKDOWNS,    XSCF_NULL,                4,   4, "improved_breakdowns",       NULL, NULL, NULL        },
 	{ XSLFI_TT_WAIT_IN_DEPOT,       XSCF_NULL,                1,   1, "tt_wait_in_depot",          NULL, NULL, NULL        },
-	{ XSLFI_AUTO_TIMETABLE,         XSCF_NULL,                3,   3, "auto_timetables",           NULL, NULL, NULL        },
-	{ XSLFI_VEHICLE_REPAIR_COST,    XSCF_NULL,                1,   1, "vehicle_repair_cost",       NULL, NULL, NULL        },
+	{ XSLFI_AUTO_TIMETABLE,         XSCF_NULL,                4,   4, "auto_timetables",           NULL, NULL, NULL        },
+	{ XSLFI_VEHICLE_REPAIR_COST,    XSCF_NULL,                2,   2, "vehicle_repair_cost",       NULL, NULL, NULL        },
 	{ XSLFI_ENH_VIEWPORT_PLANS,     XSCF_IGNORABLE_ALL,       1,   1, "enh_viewport_plans",        NULL, NULL, "PLAN,PLLN" },
 	{ XSLFI_INFRA_SHARING,          XSCF_NULL,                1,   1, "infra_sharing",             NULL, NULL, NULL        },
 	{ XSLFI_VARIABLE_DAY_LENGTH,    XSCF_NULL,                1,   1, "variable_day_length",       NULL, NULL, NULL        },
@@ -68,8 +68,11 @@ const SlxiSubChunkInfo _sl_xv_sub_chunk_infos[] = {
 	{ XSLFI_REVERSE_AT_WAYPOINT,    XSCF_NULL,                1,   1, "reverse_at_waypoint",       NULL, NULL, NULL        },
 	{ XSLFI_VEH_LIFETIME_PROFIT,    XSCF_NULL,                1,   1, "veh_lifetime_profit",       NULL, NULL, NULL        },
 	{ XSLFI_LINKGRAPH_DAY_SCALE,    XSCF_NULL,                1,   1, "linkgraph_day_scale",       NULL, NULL, NULL        },
-	{ XSLFI_TEMPLATE_REPLACEMENT,   XSCF_NULL,                1,   1, "template_replacement",      NULL, NULL, "TRPL,TMPL" },
+	{ XSLFI_TEMPLATE_REPLACEMENT,   XSCF_NULL,                3,   3, "template_replacement",      NULL, NULL, "TRPL,TMPL" },
 	{ XSLFI_MORE_RAIL_TYPES,        XSCF_NULL,                1,   1, "more_rail_types",           NULL, NULL, NULL        },
+	{ XSLFI_CARGO_TYPE_ORDERS,      XSCF_NULL,                2,   2, "cargo_type_orders",         NULL, NULL, "ORDX,VEOX" },
+	{ XSLFI_EXTENDED_GAMELOG,       XSCF_NULL,                1,   1, "extended_gamelog",          NULL, NULL, NULL        },
+	{ XSLFI_STATION_CATCHMENT_INC,  XSCF_NULL,                1,   1, "station_catchment_inc",     NULL, NULL, NULL        },
 	{ XSLFI_NULL, XSCF_NULL, 0, 0, NULL, NULL, NULL, NULL },// This is the end marker
 };
 
@@ -112,6 +115,20 @@ bool SlXvIsFeaturePresent(SlXvFeatureIndex feature, uint16 min_version, uint16 m
 }
 
 /**
+ * Returns true if @p feature is present and has a version inclusively bounded by @p min_version and @p max_version
+ */
+const char *SlXvGetFeatureName(SlXvFeatureIndex feature)
+{
+	const SlxiSubChunkInfo *info = _sl_xv_sub_chunk_infos;
+	for (; info->index != XSLFI_NULL; ++info) {
+		if (info->index == feature) {
+			return info->name;
+		}
+	}
+	return "(unknown feature)";
+}
+
+/**
  * Resets all extended feature versions to 0
  */
 void SlXvResetState()
@@ -143,6 +160,7 @@ void SlXvSetCurrentState()
  */
 void SlXvCheckSpecialSavegameVersions()
 {
+	// Checks for special savegame versions go here
 	extern uint16 _sl_version;
 
 	if (_sl_version == 2000) {
@@ -151,21 +169,30 @@ void SlXvCheckSpecialSavegameVersions()
 		_sl_is_faked_ext = true;
 		_sl_xv_feature_versions[XSLFI_TRACE_RESTRICT] = 1;
 	}
+	if (_sl_version == 2001) {
+		DEBUG(sl, 1, "Loading a trace restrict patch savegame version %d as version 195", _sl_version);
+		_sl_version = 195;
+		_sl_is_faked_ext = true;
+		_sl_xv_feature_versions[XSLFI_TRACE_RESTRICT] = 6;
+	}
 
 	if (_sl_version == 220) { /* SL_SPRING_2013_v2_0_102 */
 		DEBUG(sl, 1, "Loading a SpringPP 2013 v2.0.102 savegame version %d as version 187", _sl_version);
 
 		_sl_version = 187;
+		_sl_is_faked_ext = true;
 		_sl_xv_feature_versions[XSLFI_SPRINGPP] = 1;
 	} else if (_sl_version == 221) { /* SL_SPRING_2013_v2_1_108 */
 		DEBUG(sl, 1, "Loading a SpringPP 2013 v2.1.108 savegame version %d as version 188", _sl_version);
 
 		_sl_version = 188;
+		_sl_is_faked_ext = true;
 		_sl_xv_feature_versions[XSLFI_SPRINGPP] = 2;
 	} else if (_sl_version == 222) { /* SL_SPRING_2013_v2_1_147 */
 		DEBUG(sl, 1, "Loading a SpringPP 2013 v2.1.147 savegame version %d as version 194", _sl_version);
 
 		_sl_version = 194;
+		_sl_is_faked_ext = true;
 		_sl_xv_feature_versions[XSLFI_SPRINGPP] = 3;
 	}
 
@@ -182,6 +209,7 @@ void SlXvCheckSpecialSavegameVersions()
 		_sl_xv_feature_versions[XSLFI_INFRA_SHARING] = 1;
 		_sl_xv_feature_versions[XSLFI_AUTO_TIMETABLE] = 1;
 		_sl_xv_feature_versions[XSLFI_MORE_COND_ORDERS] = 1;
+		_sl_xv_feature_versions[XSLFI_SIG_TUNNEL_BRIDGE] = 1;
 
 		_sl_xv_discardable_chunk_ids.push_back('SNOW');
 	}

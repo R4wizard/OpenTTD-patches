@@ -1640,6 +1640,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\..\src\scope.h"
+				>
+			</File>
+			<File
 				RelativePath=".\..\src\screenshot.h"
 				>
 			</File>
@@ -1984,6 +1988,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\..\src\unit_conversion.h"
+				>
+			</File>
+			<File
 				RelativePath=".\..\src\video\win32_v.h"
 				>
 			</File>
@@ -2037,6 +2045,10 @@
 			</File>
 			<File
 				RelativePath=".\..\src\core\bitmath_func.hpp"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\core\container_func.hpp"
 				>
 			</File>
 			<File
@@ -2917,6 +2929,10 @@
 			</File>
 			<File
 				RelativePath=".\..\src\saveload\tbtr_template_veh_sl.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\saveload\bridge_signal_sl.cpp"
 				>
 			</File>
 		</Filter>
@@ -3968,6 +3984,14 @@
 				>
 			</File>
 			<File
+				RelativePath=".\..\src\blitter\32bpp_anim_sse2.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\blitter\32bpp_anim_sse2.hpp"
+				>
+			</File>
+			<File
 				RelativePath=".\..\src\blitter\32bpp_anim_sse4.cpp"
 				>
 			</File>
@@ -4205,6 +4229,10 @@
 			</File>
 			<File
 				RelativePath=".\..\src\bridge_map.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\bridge_signal_map.h"
 				>
 			</File>
 			<File
@@ -4649,6 +4677,14 @@
 			</File>
 			<File
 				RelativePath=".\..\src\saveload\tracerestrict_sl.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\scope_info.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\scope_info.h"
 				>
 			</File>
 		</Filter>

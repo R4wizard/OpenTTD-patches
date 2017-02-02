@@ -41,21 +41,28 @@ struct TimetableArrivalDeparture {
 
 /**
  * Set the timetable parameters in the format as described by the setting.
- * @param param1 the first DParam to fill
- * @param param2 the second DParam to fill
+ * @param param the first DParam to fill
  * @param ticks  the number of ticks to 'draw'
  */
-void SetTimetableParams(int param1, int param2, Ticks ticks)
+void SetTimetableParams(int first_param, Ticks ticks)
 {
 	if (_settings_client.gui.timetable_in_ticks) {
-		SetDParam(param2, ticks);
-		SetDParam(param1, STR_TIMETABLE_TICKS);
-	} else if (_settings_client.gui.time_in_minutes) {
-		SetDParam(param2, ticks / DATE_UNIT_SIZE);
-		SetDParam(param1, STR_TIMETABLE_MINUTES);
+		SetDParam(first_param, STR_TIMETABLE_TICKS);
+		SetDParam(first_param + 1, ticks);
 	} else {
-		SetDParam(param2, ticks / DATE_UNIT_SIZE);
-		SetDParam(param1, STR_TIMETABLE_DAYS);
+		StringID str = _settings_client.gui.time_in_minutes ? STR_TIMETABLE_MINUTES : STR_TIMETABLE_DAYS;
+		size_t ratio = DATE_UNIT_SIZE;
+		size_t units = ticks / ratio;
+		size_t leftover = ticks % ratio;
+		if (leftover && _settings_client.gui.timetable_leftover_ticks) {
+			SetDParam(first_param, STR_TIMETABLE_LEFTOVER_TICKS);
+			SetDParam(first_param + 1, str);
+			SetDParam(first_param + 2, units);
+			SetDParam(first_param + 3, leftover);
+		} else {
+			SetDParam(first_param, str);
+			SetDParam(first_param + 1, units);
+		}
 	}
 }
 
@@ -145,9 +152,11 @@ static void FillTimetableArrivalDepartureTable(const Vehicle *v, VehicleOrderID 
  * @param p1 The p1 parameter to send to CmdSetTimetableStart
  * @param date the actually chosen date
  */
-static void ChangeTimetableStartIntl(uint32 p1, DateTicks date)
+static void ChangeTimetableStartIntl(uint32 p1, DateTicksScaled date)
 {
-	DoCommandP(0, p1, (Ticks)(date - (((DateTicks)_date * DAY_TICKS) + _date_fract)), CMD_SET_TIMETABLE_START | CMD_MSG(STR_ERROR_CAN_T_TIMETABLE_VEHICLE));
+	DateTicks date_part = date / _settings_game.economy.day_length_factor;
+	uint32 sub_ticks = date % _settings_game.economy.day_length_factor;
+	DoCommandP(0, p1 | (sub_ticks << 21), (Ticks)(date_part - (((DateTicks)_date * DAY_TICKS) + _date_fract)), CMD_SET_TIMETABLE_START | CMD_MSG(STR_ERROR_CAN_T_TIMETABLE_VEHICLE));
 }
 
 /**
@@ -155,7 +164,7 @@ static void ChangeTimetableStartIntl(uint32 p1, DateTicks date)
  * @param window the window related to the setting of the date
  * @param date the actually chosen date
  */
-static void ChangeTimetableStartCallback(const Window *w, DateTicks date)
+static void ChangeTimetableStartCallback(const Window *w, DateTicksScaled date)
 {
 	ChangeTimetableStartIntl(w->window_number, date);
 }
@@ -189,7 +198,7 @@ struct TimetableWindow : Window {
 	~TimetableWindow()
 	{
 		if (!FocusWindowById(WC_VEHICLE_VIEW, this->window_number)) {
-			MarkAllRouteStepsDirty(this);
+			MarkAllRouteStepsDirty(this->vehicle);
 		}
 	}
 
@@ -341,16 +350,17 @@ struct TimetableWindow : Window {
 			}
 			bool disable_speed = disable || selected % 2 != 1 || v->type == VEH_AIRCRAFT;
 
-			this->SetWidgetDisabledState(WID_VT_CHANGE_TIME, disable);
-			this->SetWidgetDisabledState(WID_VT_CLEAR_TIME, disable);
+			this->SetWidgetDisabledState(WID_VT_CHANGE_TIME, disable || HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE));
+			this->SetWidgetDisabledState(WID_VT_CLEAR_TIME, disable || HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE));
 			this->SetWidgetDisabledState(WID_VT_CHANGE_SPEED, disable_speed);
 			this->SetWidgetDisabledState(WID_VT_CLEAR_SPEED, disable_speed);
 			this->SetWidgetDisabledState(WID_VT_SHARED_ORDER_LIST, !v->IsOrderListShared());
 
-			this->SetWidgetDisabledState(WID_VT_START_DATE, v->orders.list == NULL);
+			this->SetWidgetDisabledState(WID_VT_START_DATE, v->orders.list == NULL || HasBit(v->vehicle_flags, VF_TIMETABLE_SEPARATION));
 			this->SetWidgetDisabledState(WID_VT_RESET_LATENESS, v->orders.list == NULL);
-			this->SetWidgetDisabledState(WID_VT_AUTOFILL, v->orders.list == NULL);
+			this->SetWidgetDisabledState(WID_VT_AUTOFILL, v->orders.list == NULL || HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE));
 			this->EnableWidget(WID_VT_AUTOMATE);
+			this->EnableWidget(WID_VT_AUTO_SEPARATION);
 		} else {
 			this->DisableWidget(WID_VT_START_DATE);
 			this->DisableWidget(WID_VT_CHANGE_TIME);
@@ -360,16 +370,13 @@ struct TimetableWindow : Window {
 			this->DisableWidget(WID_VT_RESET_LATENESS);
 			this->DisableWidget(WID_VT_AUTOFILL);
 			this->DisableWidget(WID_VT_AUTOMATE);
+			this->DisableWidget(WID_VT_AUTO_SEPARATION);
 			this->DisableWidget(WID_VT_SHARED_ORDER_LIST);
 		}
 
 		this->SetWidgetLoweredState(WID_VT_AUTOFILL, HasBit(v->vehicle_flags, VF_AUTOFILL_TIMETABLE));
 		this->SetWidgetLoweredState(WID_VT_AUTOMATE, HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE));
-		this->SetWidgetDisabledState(WID_VT_START_DATE, _settings_game.order.timetable_separation);
-		this->SetWidgetDisabledState(WID_VT_AUTOMATE, !_settings_game.order.timetable_automated);
-		this->SetWidgetDisabledState(WID_VT_CHANGE_TIME, HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE));
-		this->SetWidgetDisabledState(WID_VT_AUTOFILL, HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE));
-		this->SetWidgetDisabledState(WID_VT_CLEAR_TIME, HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE));
+		this->SetWidgetLoweredState(WID_VT_AUTO_SEPARATION, HasBit(v->vehicle_flags, VF_TIMETABLE_SEPARATION));
 
 		this->DrawWidgets();
 	}
@@ -425,7 +432,7 @@ struct TimetableWindow : Window {
 							colour = ((i == selected) ? TC_SILVER : TC_GREY) | TC_NO_SHADE;
 						} else if (!order->IsTravelTimetabled()) {
 							if (order->GetTravelTime() > 0) {
-								SetTimetableParams(0, 1, order->GetTravelTime());
+								SetTimetableParams(0, order->GetTravelTime());
 								string = order->GetMaxSpeed() != UINT16_MAX ?
 										STR_TIMETABLE_TRAVEL_FOR_SPEED_ESTIMATED  :
 										STR_TIMETABLE_TRAVEL_FOR_ESTIMATED;
@@ -435,11 +442,11 @@ struct TimetableWindow : Window {
 										STR_TIMETABLE_TRAVEL_NOT_TIMETABLED;
 							}
 						} else {
-							SetTimetableParams(0, 1, order->GetTimetabledTravel());
+							SetTimetableParams(0, order->GetTimetabledTravel());
 							string = order->GetMaxSpeed() != UINT16_MAX ?
 									STR_TIMETABLE_TRAVEL_FOR_SPEED : STR_TIMETABLE_TRAVEL_FOR;
 						}
-						SetDParam(2, order->GetMaxSpeed());
+						SetDParam(string == STR_TIMETABLE_TRAVEL_NOT_TIMETABLED_SPEED ? 2 : 4, order->GetMaxSpeed());
 
 						DrawString(rtl ? r.left + WD_FRAMERECT_LEFT : middle, rtl ? middle : r.right - WD_FRAMERECT_LEFT, y, string, colour);
 
@@ -484,10 +491,10 @@ struct TimetableWindow : Window {
 						if (arr_dep[i / 2].arrival != INVALID_TICKS) {
 							DrawString(abbr_left, abbr_right, y, STR_TIMETABLE_ARRIVAL_ABBREVIATION, i == selected ? TC_WHITE : TC_BLACK);
 							if (this->show_expected && i / 2 == earlyID) {
-								SetDParam(0, CURRENT_SCALED_TICKS + arr_dep[i / 2].arrival);
+								SetDParam(0, _scaled_date_ticks + arr_dep[i / 2].arrival);
 								DrawString(time_left, time_right, y, STR_JUST_DATE_WALLCLOCK_TINY, TC_GREEN);
 							} else {
-								SetDParam(0, CURRENT_SCALED_TICKS + arr_dep[i / 2].arrival + offset);
+								SetDParam(0, _scaled_date_ticks + arr_dep[i / 2].arrival + offset);
 								DrawString(time_left, time_right, y, STR_JUST_DATE_WALLCLOCK_TINY,
 										show_late ? TC_RED : i == selected ? TC_WHITE : TC_BLACK);
 							}
@@ -495,7 +502,7 @@ struct TimetableWindow : Window {
 					} else {
 						if (arr_dep[i / 2].departure != INVALID_TICKS) {
 							DrawString(abbr_left, abbr_right, y, STR_TIMETABLE_DEPARTURE_ABBREVIATION, i == selected ? TC_WHITE : TC_BLACK);
-							SetDParam(0, CURRENT_SCALED_TICKS + arr_dep[i/2].departure + offset);
+							SetDParam(0, _scaled_date_ticks + arr_dep[i/2].departure + offset);
 							DrawString(time_left, time_right, y, STR_JUST_DATE_WALLCLOCK_TINY,
 									show_late ? TC_RED : i == selected ? TC_WHITE : TC_BLACK);
 						}
@@ -510,7 +517,7 @@ struct TimetableWindow : Window {
 
 				Ticks total_time = v->orders.list != NULL ? v->orders.list->GetTimetableDurationIncomplete() : 0;
 				if (total_time != 0) {
-					SetTimetableParams(0, 1, total_time);
+					SetTimetableParams(0, total_time);
 					DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, v->orders.list->IsCompleteTimetable() ? STR_TIMETABLE_TOTAL_TIME : STR_TIMETABLE_TOTAL_TIME_INCOMPLETE);
 				}
 				y += FONT_HEIGHT_NORMAL;
@@ -519,7 +526,7 @@ struct TimetableWindow : Window {
 					/* We are running towards the first station so we can start the
 					 * timetable at the given time. */
 					SetDParam(0, STR_JUST_DATE_WALLCLOCK_TINY);
-					SetDParam(1, v->timetable_start * _settings_game.economy.day_length_factor);
+					SetDParam(1, (v->timetable_start * _settings_game.economy.day_length_factor) + v->timetable_start_subticks);
 					DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, STR_TIMETABLE_STATUS_START_AT);
 				} else if (!HasBit(v->vehicle_flags, VF_TIMETABLE_STARTED)) {
 					/* We aren't running on a timetable yet, so how can we be "on time"
@@ -528,7 +535,7 @@ struct TimetableWindow : Window {
 				} else if (v->lateness_counter == 0 || (!_settings_client.gui.timetable_in_ticks && v->lateness_counter / DATE_UNIT_SIZE == 0)) {
 					DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, STR_TIMETABLE_STATUS_ON_TIME);
 				} else {
-					SetTimetableParams(0, 1, abs(v->lateness_counter));
+					SetTimetableParams(0, abs(v->lateness_counter));
 					DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, v->lateness_counter < 0 ? STR_TIMETABLE_STATUS_EARLY : STR_TIMETABLE_STATUS_LATE);
 				}
 				break;
@@ -569,7 +576,7 @@ struct TimetableWindow : Window {
 				if (_settings_client.gui.time_in_minutes && _settings_client.gui.timetable_start_text_entry) {
 					this->set_start_date_all = v->orders.list->IsCompleteTimetable() && _ctrl_pressed;
 					StringID str = STR_JUST_INT;
-					uint64 time = CURRENT_SCALED_TICKS;
+					uint64 time = _scaled_date_ticks;
 					time /= _settings_client.gui.ticks_per_minute;
 					time += _settings_client.gui.clock_offset;
 					time %= (24 * 60);
@@ -578,7 +585,7 @@ struct TimetableWindow : Window {
 					ShowQueryString(str, STR_TIMETABLE_STARTING_DATE, 31, this, CS_NUMERAL, QSF_ACCEPT_UNCHANGED);
 				} else {
 					ShowSetDateWindow(this, v->index | (v->orders.list->IsCompleteTimetable() && _ctrl_pressed ? 1U << 20 : 0),
-							((DateTicks)_date * DAY_TICKS) + _date_fract, _cur_year, _cur_year + 15, ChangeTimetableStartCallback);
+							_scaled_date_ticks, _cur_year, _cur_year + 15, ChangeTimetableStartCallback);
 				}
 				break;
 
@@ -660,6 +667,13 @@ struct TimetableWindow : Window {
 				break;
 			}
 
+			case WID_VT_AUTO_SEPARATION: {
+				uint32 p2 = 0;
+				if (!HasBit(v->vehicle_flags, VF_TIMETABLE_SEPARATION)) SetBit(p2, 0);
+				DoCommandP(0, v->index, p2, CMD_TIMETABLE_SEPARATION | CMD_MSG(STR_ERROR_CAN_T_TIMETABLE_VEHICLE));
+				break;
+			}
+
 			case WID_VT_EXPECTED:
 				this->show_expected = !this->show_expected;
 				break;
@@ -708,7 +722,6 @@ struct TimetableWindow : Window {
 
 					if (val < (CURRENT_MINUTE - 60)) val += 60 * 24;
 					val *= _settings_client.gui.ticks_per_minute;
-					val /= _settings_game.economy.day_length_factor;
 					ChangeTimetableStartIntl(v->index | (this->set_start_date_all ? 1 << 20 : 0), val);
 				}
 				break;
@@ -728,7 +741,6 @@ struct TimetableWindow : Window {
 	void UpdateSelectionStates()
 	{
 		this->GetWidget<NWidgetStacked>(WID_VT_ARRIVAL_DEPARTURE_SELECTION)->SetDisplayedPlane(_settings_client.gui.timetable_arrival_departure ? 0 : SZSP_NONE);
-		// this->GetWidget<NWidgetStacked>(TTV_AUTO_SELECTION)->SetDisplayedPlane(!_settings_game.order.timetable_automated ? 0 : 1);
 		this->GetWidget<NWidgetStacked>(WID_VT_EXPECTED_SELECTION)->SetDisplayedPlane(_settings_client.gui.timetable_arrival_departure ? 0 : 1);
 	}
 
@@ -736,7 +748,7 @@ struct TimetableWindow : Window {
 	{
 		if (HasFocusedVehicleChanged(this->window_number, previously_focused_window)) {
 			MarkAllRoutePathsDirty(this->vehicle);
-			MarkAllRouteStepsDirty(this);
+			MarkAllRouteStepsDirty(this->vehicle);
 		}
 	}
 
@@ -744,7 +756,7 @@ struct TimetableWindow : Window {
 	{
 		if (HasFocusedVehicleChanged(this->window_number, newly_focused_window)) {
 			MarkAllRoutePathsDirty(this->vehicle);
-			MarkAllRouteStepsDirty(this);
+			MarkAllRouteStepsDirty(this->vehicle);
 		}
 	}
 
@@ -783,6 +795,7 @@ static const NWidgetPart _nested_timetable_widgets[] = {
 			EndContainer(),
 			NWidget(NWID_VERTICAL, NC_EQUALSIZE),
 				NWidget(WWT_PUSHTXTBTN, COLOUR_GREY, WID_VT_START_DATE), SetResize(1, 0), SetFill(1, 1), SetDataTip(STR_TIMETABLE_STARTING_DATE, STR_TIMETABLE_STARTING_DATE_TOOLTIP),
+				NWidget(WWT_PUSHTXTBTN, COLOUR_GREY, WID_VT_AUTO_SEPARATION), SetResize(1, 0), SetFill(1, 1), SetDataTip(STR_TIMETABLE_AUTO_SEPARATION, STR_TIMETABLE_AUTO_SEPARATION_TOOLTIP),
 				NWidget(WWT_PUSHTXTBTN, COLOUR_GREY, WID_VT_RESET_LATENESS), SetResize(1, 0), SetFill(1, 1), SetDataTip(STR_TIMETABLE_RESET_LATENESS, STR_TIMETABLE_RESET_LATENESS_TOOLTIP),
 			EndContainer(),
 			NWidget(NWID_VERTICAL, NC_EQUALSIZE),
