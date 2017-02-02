@@ -33,6 +33,7 @@ GAME_DIR    = $(BUNDLE_DIR)/$(OSXAPP)/Contents/Resources/game
 BASESET_DIR = $(BUNDLE_DIR)/$(OSXAPP)/Contents/Resources/baseset
 LANG_DIR    = $(BUNDLE_DIR)/$(OSXAPP)/Contents/Resources/lang
 HTTP_DIR    = $(BUNDLE_DIR)/$(OSXAPP)/Contents/Resources/http
+DATA_DIR    = $(BUNDLE_DIR)/$(OSXAPP)/Contents/Resources/data
 TTD_DIR     = $(BUNDLE_DIR)/$(OSXAPP)/Contents/MacOS
 else
 AI_DIR      = $(BUNDLE_DIR)/ai
@@ -40,6 +41,7 @@ GAME_DIR    = $(BUNDLE_DIR)/game
 BASESET_DIR = $(BUNDLE_DIR)/baseset
 LANG_DIR    = $(BUNDLE_DIR)/lang
 HTTP_DIR    = $(BUNDLE_DIR)/http
+DATA_DIR    = $(BUNDLE_DIR)/http
 TTD_DIR     = $(BUNDLE_DIR)
 endif
 
@@ -57,6 +59,7 @@ bundle: all
 	$(Q)mkdir -p "$(BASESET_DIR)"
 	$(Q)mkdir -p "$(LANG_DIR)"
 	$(Q)mkdir -p "$(HTTP_DIR)"
+	$(Q)mkdir -p "$(DATA_DIR)"
 ifdef OSXAPP
 	$(Q)mkdir -p "$(BUNDLE_DIR)/$(OSXAPP)/Contents/Resources"
 	$(Q)echo "APPL????" >                                          "$(BUNDLE_DIR)/$(OSXAPP)/Contents/PkgInfo"
@@ -76,7 +79,6 @@ endif
 	$(Q)cp "$(BIN_DIR)/baseset/opntitle.dat"  "$(BASESET_DIR)/"
 	$(Q)cp "$(BIN_DIR)/baseset/"*.obm         "$(BASESET_DIR)/"
 	$(Q)cp "$(BIN_DIR)/lang/"*.lng            "$(LANG_DIR)/"
-	$(Q)cp "$(BIN_DIR)/http/"*                "$(HTTP_DIR)/"
 	$(Q)cp "$(ROOT_DIR)/readme.txt"           "$(BUNDLE_DIR)/"
 	$(Q)cp "$(ROOT_DIR)/COPYING"              "$(BUNDLE_DIR)/"
 	$(Q)cp "$(ROOT_DIR)/known-bugs.txt"       "$(BUNDLE_DIR)/"
@@ -84,6 +86,8 @@ endif
 	$(Q)cp "$(ROOT_DIR)/changelog.txt"        "$(BUNDLE_DIR)/"
 	$(Q)cp "$(ROOT_DIR)/README.md"            "$(BUNDLE_DIR)/"
 	$(Q)cp "$(ROOT_DIR)/jgrpp-changelog.md"   "$(BUNDLE_DIR)/"
+	$(Q)cp "$(BIN_DIR)/http/"*                "$(HTTP_DIR)/"
+	$(Q)cp "$(BIN_DIR)/data/"*                "$(DATA_DIR)/"
 ifdef MAN_DIR
 	$(Q)mkdir -p "$(BUNDLE_DIR)/man/"
 	$(Q)cp "$(ROOT_DIR)/docs/openttd.6"       "$(BUNDLE_DIR)/man/"
