@@ -24,6 +24,9 @@ NetworkHTTPHandler *_http_server_handler = NULL;
 /** Initialize the whole web bit. */
 void NetworkHTTPInitialize()
 {
+	DEBUG(net, 1, "[http] aborting start. module disabled in code.");
+	return;
+
 	/* If not closed, then do it. */
 	if (_http_server_handler != NULL) NetworkHTTPClose();
 
@@ -36,6 +39,8 @@ void NetworkHTTPInitialize()
 
 void NetworkHTTPClose()
 {
+	return;
+
 	if(_http_server_handler != NULL)
 		_http_server_handler->Close();
 
@@ -47,6 +52,8 @@ void NetworkHTTPClose()
 
 void NetworkHTTPTick()
 {
+	return;
+
 	if(_http_server_handler == NULL)
 		return;
 
