@@ -13,6 +13,7 @@
 #include "command_func.h"
 #include "company_func.h"
 #include "date_func.h"
+#include "date_type.h"
 #include "window_func.h"
 #include "vehicle_base.h"
 #include "settings_type.h"
@@ -20,6 +21,7 @@
 #include "company_base.h"
 #include "core/sort_func.hpp"
 #include "settings_type.h"
+#include "scope.h"
 
 #include "table/strings.h"
 
@@ -41,15 +43,20 @@ static void ChangeTimetable(Vehicle *v, VehicleOrderID order_number, uint16 val,
 
 	switch (mtf) {
 		case MTF_WAIT_TIME:
-			total_delta = val - order->GetWaitTime();
-			timetable_delta = (timetabled ? val : 0) - order->GetTimetabledWait();
+			if (!order->IsType(OT_CONDITIONAL)) {
+				total_delta = val - order->GetWaitTime();
+				timetable_delta = (timetabled ? val : 0) - order->GetTimetabledWait();
+			}
 			order->SetWaitTime(val);
 			order->SetWaitTimetabled(timetabled);
 			break;
 
 		case MTF_TRAVEL_TIME:
-			total_delta = val - order->GetTravelTime();
-			timetable_delta = (timetabled ? val : 0) - order->GetTimetabledTravel();
+			if (!order->IsType(OT_CONDITIONAL)) {
+				total_delta = val - order->GetTravelTime();
+				timetable_delta = (timetabled ? val : 0) - order->GetTimetabledTravel();
+			}
+			if (order->IsType(OT_CONDITIONAL)) assert_msg(val == order->GetTravelTime(), "%u == %u", val, order->GetTravelTime());
 			order->SetTravelTime(val);
 			order->SetTravelTimetabled(timetabled);
 			break;
@@ -652,6 +659,48 @@ void UpdateSeparationOrder(Vehicle *v_start)
 	}
 }
 
+static bool IsVehicleAtFirstWaitingLocation(Vehicle *v)
+{
+	/* Check if we arrive at first station */
+	int first_wait_index = -1;
+	for (int i = 0; i < v->orders.list->GetNumOrders(); ++i) {
+		Order* order = v->orders.list->GetOrderAt(i);
+
+		if (order->IsWaitTimetabled() && !order->IsType(OT_IMPLICIT)) {
+			first_wait_index = i;
+			break;
+		}
+	}
+
+	return v->orders.list->IsCompleteTimetable() && (v->cur_implicit_order_index == first_wait_index);
+}
+
+static DateTicksScaled GetScheduledDispatchTime(Vehicle *v)
+{
+	DateTicksScaled first_slot          = -1;
+	const DateTicksScaled begin_time    = v->orders.list->GetScheduledDispatchStartTick();
+	const int32 last_dispatched_offset  = v->orders.list->GetScheduledDispatchLastDispatch();
+	const uint32 dispatch_duration      = v->orders.list->GetScheduledDispatchDuration();
+	const int32 max_delay               = v->orders.list->GetScheduledDispatchDelay();
+
+	/* Find next available slots */
+	for (auto current_offset : v->orders.list->GetScheduledDispatch()) {
+		while (int32(current_offset) <= last_dispatched_offset) {
+			current_offset += dispatch_duration;
+		}
+
+		DateTicksScaled current_departure = begin_time + current_offset;
+		while (current_departure + max_delay < _scaled_date_ticks) {
+			current_departure += dispatch_duration;
+		}
+
+		if (first_slot == -1 || first_slot > current_departure) {
+			first_slot = current_departure;
+		}
+	}
+
+	return first_slot;
+}
 
 /**
  * Update the timetable for the vehicle.
@@ -671,6 +720,12 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 
 	if (v->cur_real_order_index >= v->GetNumOrders()) return;
 	Order *real_current_order = v->GetOrder(v->cur_real_order_index);
+	Order *real_timetable_order = v->cur_timetable_order_index != INVALID_VEH_ORDER_ID ? v->GetOrder(v->cur_timetable_order_index) : nullptr;
+
+	auto guard = scope_guard([v, travelling]() {
+		/* On next call, when updating waiting time, use current order even if travel field of current order isn't being updated */
+		if (travelling) v->cur_timetable_order_index = v->cur_real_order_index;
+	});
 
 	VehicleOrderID first_manual_order = 0;
 	for (Order *o = v->GetFirstOrder(); o != NULL && o->IsType(OT_IMPLICIT); o = o->next) {
@@ -679,11 +734,26 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 
 	bool just_started = false;
 
+	/* Start scheduled dispatch at first opportunity */
+	if (!HasBit(v->vehicle_flags, VF_TIMETABLE_STARTED) && HasBit(v->vehicle_flags, VF_SCHEDULED_DISPATCH)) {
+		if (IsVehicleAtFirstWaitingLocation(v) && travelling) {
+			/* Update scheduled information */
+			v->orders.list->UpdateScheduledDispatch();
+
+			DateTicksScaled slot = GetScheduledDispatchTime(v);
+			if (slot > -1) {
+				v->lateness_counter = _scaled_date_ticks - slot;
+				v->orders.list->SetScheduledDispatchLastDispatch(slot - v->orders.list->GetScheduledDispatchStartTick());
+			}
+		}
+	}
+
 	/* Start automated timetables at first opportunity */
 	if (!HasBit(v->vehicle_flags, VF_TIMETABLE_STARTED) && HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE)) {
 		v->ClearSeparation();
 		SetBit(v->vehicle_flags, VF_TIMETABLE_STARTED);
-		v->lateness_counter = 0;
+		/* If the lateness is set by scheduled dispatch above, do not reset */
+		if(!HasBit(v->vehicle_flags, VF_SCHEDULED_DISPATCH)) v->lateness_counter = 0;
 		if (HasBit(v->vehicle_flags, VF_TIMETABLE_SEPARATION)) UpdateSeparationOrder(v);
 		for (v = v->FirstShared(); v != NULL; v = v->NextShared()) {
 			SetWindowDirty(WC_VEHICLE_TIMETABLE, v->index);
@@ -710,10 +780,12 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 	}
 
 	if (!HasBit(v->vehicle_flags, VF_TIMETABLE_STARTED)) return;
+	if (real_timetable_order == nullptr) return;
 
 	bool autofilling = HasBit(v->vehicle_flags, VF_AUTOFILL_TIMETABLE);
-	bool remeasure_wait_time = !real_current_order->IsWaitTimetabled() ||
-			(autofilling && !HasBit(v->vehicle_flags, VF_AUTOFILL_PRES_WAIT_TIME));
+	bool is_conditional = real_timetable_order->IsType(OT_CONDITIONAL);
+	bool remeasure_wait_time = !is_conditional && (!real_timetable_order->IsWaitTimetabled() ||
+			(autofilling && !HasBit(v->vehicle_flags, VF_AUTOFILL_PRES_WAIT_TIME)));
 
 	if (travelling && remeasure_wait_time) {
 		/* We just finished travelling and want to remeasure the loading time,
@@ -721,11 +793,23 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 		v->current_order.SetWaitTime(0);
 	}
 
+	bool travel_field = travelling;
+	if (is_conditional) {
+		if (travelling) {
+			/* conditional orders use the wait field for the jump-taken travel time */
+			travel_field = false;
+		} else {
+			/* doesn't make sense to update wait time for conditional orders */
+			return;
+		}
+	} else {
+		assert(real_timetable_order == real_current_order);
+	}
+
 	if (just_started) return;
 
 	/* Before modifying waiting times, check whether we want to preserve bigger ones. */
-	if (!real_current_order->IsType(OT_CONDITIONAL) &&
-			(travelling || time_taken > real_current_order->GetWaitTime() || remeasure_wait_time)) {
+	if ((travelling || time_taken > real_timetable_order->GetWaitTime() || remeasure_wait_time)) {
 		/* Round the time taken up to the nearest timetable rounding factor
 		 * (default: day), as this will avoid confusion for people who are
 		 * timetabling in days, and can be adjusted later by people who aren't.
@@ -739,10 +823,10 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 		uint rounding_factor = owner ? owner->settings.timetable_autofill_rounding : DAY_TICKS;
 		uint time_to_set = CeilDiv(max(time_taken, 1U), rounding_factor) * rounding_factor;
 
-		if (travelling && (autofilling || !real_current_order->IsTravelTimetabled())) {
-			ChangeTimetable(v, v->cur_real_order_index, time_to_set, MTF_TRAVEL_TIME, autofilling);
-		} else if (!travelling && (autofilling || !real_current_order->IsWaitTimetabled())) {
-			ChangeTimetable(v, v->cur_real_order_index, time_to_set, MTF_WAIT_TIME, autofilling);
+		if (travel_field && (autofilling || !real_timetable_order->IsTravelTimetabled())) {
+			ChangeTimetable(v, v->cur_timetable_order_index, time_to_set, MTF_TRAVEL_TIME, autofilling);
+		} else if (!travel_field && (autofilling || !real_timetable_order->IsWaitTimetabled())) {
+			ChangeTimetable(v, v->cur_timetable_order_index, time_to_set, MTF_WAIT_TIME, autofilling);
 		}
 	}
 
@@ -756,8 +840,8 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 
 	if (autofilling) return;
 
-	uint timetabled = travelling ? real_current_order->GetTimetabledTravel() :
-			real_current_order->GetTimetabledWait();
+	uint timetabled = travel_field ? real_timetable_order->GetTimetabledTravel() :
+			real_timetable_order->GetTimetabledWait();
 
 	/* Update the timetable to gradually shift order times towards the actual travel times. */
 	if (timetabled != 0 && HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE)) {
@@ -771,7 +855,7 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 		if (new_time > (int32)timetabled * 4 && travelling) {
 			/* Possible jam, clear time and restart timetable for all vehicles.
 			 * Otherwise we risk trains blocking 1-lane stations for long times. */
-			ChangeTimetable(v, v->cur_real_order_index, 0, travelling ? MTF_TRAVEL_TIME : MTF_WAIT_TIME, true);
+			ChangeTimetable(v, v->cur_timetable_order_index, 0, travel_field ? MTF_TRAVEL_TIME : MTF_WAIT_TIME, true);
 			for (Vehicle *v2 = v->FirstShared(); v2 != NULL; v2 = v2->NextShared()) {
 				v2->ClearSeparation();
 				ClrBit(v2->vehicle_flags, VF_TIMETABLE_STARTED);
@@ -791,14 +875,15 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 
 		if (new_time < 1) new_time = 1;
 		if (new_time != (int32)timetabled) {
-			ChangeTimetable(v, v->cur_real_order_index, new_time, travelling ? MTF_TRAVEL_TIME : MTF_WAIT_TIME, true);
+			ChangeTimetable(v, v->cur_timetable_order_index, new_time, travel_field ? MTF_TRAVEL_TIME : MTF_WAIT_TIME, true);
 		}
 	} else if (timetabled == 0 && HasBit(v->vehicle_flags, VF_AUTOMATE_TIMETABLE)) {
 		/* Add times for orders that are not yet timetabled, even while not autofilling */
-		if (travelling) {
-			ChangeTimetable(v, v->cur_real_order_index, time_taken, MTF_TRAVEL_TIME, true);
+		const int32 new_time = travelling ? time_taken : time_loading;
+		if (travel_field) {
+			ChangeTimetable(v, v->cur_timetable_order_index, new_time, MTF_TRAVEL_TIME, true);
 		} else {
-			ChangeTimetable(v, v->cur_real_order_index, time_loading, MTF_WAIT_TIME, true);
+			ChangeTimetable(v, v->cur_timetable_order_index, new_time, MTF_WAIT_TIME, true);
 		}
 	}
 
@@ -813,6 +898,23 @@ void UpdateVehicleTimetable(Vehicle *v, bool travelling)
 		UpdateSeparationOrder(v);
 		v->current_order_time = 0;
 		v->current_loading_time = 0;
+	} else if (HasBit(v->vehicle_flags, VF_SCHEDULED_DISPATCH) && HasBit(v->vehicle_flags, VF_TIMETABLE_STARTED)) {
+		const bool is_first_waiting = IsVehicleAtFirstWaitingLocation(v);
+		if (is_first_waiting) {
+			/* Update scheduled information */
+			v->orders.list->UpdateScheduledDispatch();
+		}
+		if (is_first_waiting && travelling) {
+			DateTicksScaled slot = GetScheduledDispatchTime(v);
+			if (slot > -1) {
+				v->lateness_counter = _scaled_date_ticks - slot;
+				v->orders.list->SetScheduledDispatchLastDispatch(slot - v->orders.list->GetScheduledDispatchStartTick());
+			} else {
+				v->lateness_counter -= (timetabled - time_taken);
+			}
+		} else {
+			v->lateness_counter -= (timetabled - time_taken);
+		}
 	} else {
 		v->lateness_counter -= (timetabled - time_taken);
 	}

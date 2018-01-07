@@ -26,6 +26,8 @@
 #include "core/geometry_func.hpp"
 #include "newgrf_debug.h"
 #include "zoom_func.h"
+#include "tunnelbridge_map.h"
+#include "viewport_type.h"
 
 #include "widgets/misc_widget.h"
 
@@ -123,6 +125,13 @@ public:
 #	define LANDINFOD_LEVEL 1
 #endif
 		DEBUG(misc, LANDINFOD_LEVEL, "TILE: %#x (%i,%i)", tile, TileX(tile), TileY(tile));
+		if(IsTunnelTile(tile)) {
+			DEBUG(misc, LANDINFOD_LEVEL, "tunnel pool size: %u", (uint)Tunnel::GetPoolSize());
+			DEBUG(misc, LANDINFOD_LEVEL, "index: %#x"          , Tunnel::GetByTile(tile)->index);
+			DEBUG(misc, LANDINFOD_LEVEL, "north tile: %#x"     , Tunnel::GetByTile(tile)->tile_n);
+			DEBUG(misc, LANDINFOD_LEVEL, "south tile: %#x"     , Tunnel::GetByTile(tile)->tile_s);
+			DEBUG(misc, LANDINFOD_LEVEL, "is chunnel: %u"      , Tunnel::GetByTile(tile)->is_chunnel);
+		}
 		DEBUG(misc, LANDINFOD_LEVEL, "type   = %#x", _m[tile].type);
 		DEBUG(misc, LANDINFOD_LEVEL, "height = %#x", _m[tile].height);
 		DEBUG(misc, LANDINFOD_LEVEL, "m1     = %#x", _m[tile].m1);
@@ -382,6 +391,8 @@ static const NWidgetPart _nested_about_widgets[] = {
 			NWidget(WWT_EMPTY, INVALID_COLOUR, WID_A_SCROLLING_TEXT),
 		EndContainer(),
 		NWidget(WWT_LABEL, COLOUR_GREY, WID_A_WEBSITE), SetDataTip(STR_BLACK_RAW_STRING, STR_NULL),
+		NWidget(WWT_LABEL, COLOUR_GREY, WID_A_WEBSITE1), SetDataTip(STR_BLACK_RAW_STRING, STR_NULL),
+		NWidget(WWT_LABEL, COLOUR_GREY, WID_A_WEBSITE2), SetDataTip(STR_BLACK_RAW_STRING, STR_NULL),
 		NWidget(WWT_LABEL, COLOUR_GREY), SetDataTip(STR_ABOUT_COPYRIGHT_OPENTTD, STR_NULL),
 	EndContainer(),
 };
@@ -452,6 +463,10 @@ static const char * const _credits[] = {
 	"  Bug Reporters - Without whom OpenTTD would still be full of bugs!",
 	"",
 	"",
+	"Developer of this patchpack:",
+	"  Jonathan G. Rennison (JGR)",
+	"",
+	"",
 	"And last but not least:",
 	"  Chris Sawyer - For an amazing game!"
 };
@@ -472,7 +487,9 @@ struct AboutWindow : public Window {
 
 	virtual void SetStringParameters(int widget) const
 	{
-		if (widget == WID_A_WEBSITE) SetDParamStr(0, "Website: http://www.openttd.org");
+		if (widget == WID_A_WEBSITE) SetDParamStr(0, "Main project website: http://www.openttd.org");
+		if (widget == WID_A_WEBSITE1) SetDParamStr(0, "Patchpack thread: https://www.tt-forums.net/viewtopic.php?f=33&t=73469");
+		if (widget == WID_A_WEBSITE2) SetDParamStr(0, "Patchpack Github: https://github.com/JGRennison/OpenTTD-patches");
 	}
 
 	virtual void UpdateWidgetSize(int widget, Dimension *size, const Dimension &padding, Dimension *fill, Dimension *resize)
@@ -653,6 +670,9 @@ struct TooltipsWindow : public Window
 	uint64 params[5];                 ///< The string parameters.
 	TooltipCloseCondition close_cond; ///< Condition for closing the window.
 	char buffer[DRAW_STRING_BUFFER];  ///< Text to draw
+	int viewport_virtual_left;        ///< Owner viewport state: left
+	int viewport_virtual_top;         ///< Owner viewport state: top
+	bool delete_next_mouse_loop;      ///< Delete window on the next mouse loop
 
 	TooltipsWindow(Window *parent, StringID str, uint paramcount, const uint64 params[], TooltipCloseCondition close_tooltip) : Window(&_tool_tips_desc)
 	{
@@ -663,7 +683,12 @@ struct TooltipsWindow : public Window
 		memcpy(this->params, params, sizeof(this->params[0]) * paramcount);
 		this->paramcount = paramcount;
 		this->close_cond = close_tooltip;
+		this->delete_next_mouse_loop = false;
 		if (this->paramcount == 0) GetString(this->buffer, str, lastof(this->buffer)); // Get the text while params are available
+		if (close_tooltip == TCC_HOVER_VIEWPORT) {
+			this->viewport_virtual_left = parent->viewport->virtual_left;
+			this->viewport_virtual_top = parent->viewport->virtual_top;
+		}
 
 		this->InitNested();
 
@@ -722,7 +747,7 @@ struct TooltipsWindow : public Window
 	virtual void OnMouseLoop()
 	{
 		/* Always close tooltips when the cursor is not in our window. */
-		if (!_cursor.in_window) {
+		if (!_cursor.in_window || this->delete_next_mouse_loop) {
 			delete this;
 			return;
 		}
@@ -733,6 +758,17 @@ struct TooltipsWindow : public Window
 			case TCC_RIGHT_CLICK: if (!_right_button_down) delete this; break;
 			case TCC_LEFT_CLICK: if (!_left_button_down) delete this; break;
 			case TCC_HOVER: if (!_mouse_hovering) delete this; break;
+
+			case TCC_HOVER_VIEWPORT:
+				if (!_mouse_hovering) {
+					delete this;
+					break;
+				}
+				if (this->viewport_virtual_left != this->parent->viewport->virtual_left ||
+						this->viewport_virtual_top != this->parent->viewport->virtual_top) {
+					this->delete_next_mouse_loop = true;
+				}
+				break;
 		}
 	}
 };
@@ -952,6 +988,8 @@ struct QueryStringWindow : public Window
 	QueryStringWindow(StringID str, StringID caption, uint max_bytes, uint max_chars, WindowDesc *desc, Window *parent, CharSetFilter afilter, QueryStringFlags flags) :
 			Window(desc), editbox(max_bytes, max_chars)
 	{
+		assert(parent != NULL);
+
 		char *last_of = &this->editbox.text.buf[this->editbox.text.max_bytes - 1];
 		GetString(this->editbox.text.buf, str, last_of);
 		str_validate(this->editbox.text.buf, last_of, SVS_NONE);
@@ -1003,7 +1041,7 @@ struct QueryStringWindow : public Window
 			if (this->parent != NULL) {
 				this->parent->OnQueryTextFinished(this->editbox.text.buf);
 			} else {
-				HandleOnEditText(this->editbox.text.buf);
+				NOT_REACHED();
 			}
 			this->editbox.handled = true;
 		}
@@ -1014,10 +1052,12 @@ struct QueryStringWindow : public Window
 		switch (widget) {
 			case WID_QS_DEFAULT:
 				this->editbox.text.DeleteAll();
-				/* FALL THROUGH */
+				FALLTHROUGH;
+
 			case WID_QS_OK:
 				this->OnOk();
-				/* FALL THROUGH */
+				FALLTHROUGH;
+
 			case WID_QS_CANCEL:
 				delete this;
 				break;
@@ -1167,7 +1207,8 @@ struct QueryWindow : public Window {
 					this->proc(this->parent, true);
 					this->proc = NULL;
 				}
-				/* FALL THROUGH */
+				FALLTHROUGH;
+
 			case WKC_ESC:
 				delete this;
 				return ES_HANDLED;

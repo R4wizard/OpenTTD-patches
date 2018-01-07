@@ -1034,8 +1034,9 @@ struct NewGRFWindow : public Window, NewGRFScanCallback {
 					if (this->editable && this->active_sel != NULL) SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_DRAG, this);
 					break;
 				}
-				/* FALL THROUGH, with double click. */
+				/* With double click, continue */
 			}
+			FALLTHROUGH;
 
 			case WID_NS_REMOVE: { // Remove GRF
 				if (this->active_sel == NULL || !this->editable) break;
@@ -1089,8 +1090,9 @@ struct NewGRFWindow : public Window, NewGRFScanCallback {
 					if (this->editable && this->avail_sel != NULL && !HasBit(this->avail_sel->flags, GCF_INVALID)) SetObjectToPlaceWnd(SPR_CURSOR_MOUSE, PAL_NONE, HT_DRAG, this);
 					break;
 				}
-				/* FALL THROUGH, with double click. */
+				/* With double click, continue */
 			}
+			FALLTHROUGH;
 
 			case WID_NS_ADD:
 				if (this->avail_sel == NULL || !this->editable || HasBit(this->avail_sel->flags, GCF_INVALID)) break;
@@ -1228,10 +1230,12 @@ struct NewGRFWindow : public Window, NewGRFScanCallback {
 				}
 
 				this->avails.ForceRebuild();
-				/* FALL THROUGH */
+				FALLTHROUGH;
+
 			case GOID_NEWGRF_LIST_EDITED:
 				this->preset = -1;
-				/* FALL THROUGH */
+				FALLTHROUGH;
+
 			case GOID_NEWGRF_PRESET_LOADED: {
 				/* Update scrollbars */
 				int i = 0;
@@ -1521,7 +1525,7 @@ private:
 			if (!HasBit((*list)->flags, GCF_STATIC)) count++;
 		}
 		if (entry == NULL) entry = list;
-		if (count >= NETWORK_MAX_GRF_COUNT) {
+		if (count >= MAX_NEWGRFS) {
 			ShowErrorMessage(STR_NEWGRF_TOO_MANY_NEWGRFS, INVALID_STRING_ID, WL_INFO);
 			return false;
 		}

@@ -30,6 +30,7 @@ dedicated.cpp
 departures.cpp
 depot.cpp
 disaster_vehicle.cpp
+dock.cpp
 driver.cpp
 economy.cpp
 effectvehicle.cpp
@@ -197,6 +198,7 @@ direction_func.h
 direction_type.h
 disaster_vehicle.h
 music/dmusic.h
+dock_base.h
 driver.h
 economy_base.h
 economy_func.h
@@ -312,6 +314,7 @@ object_type.h
 openttd.h
 order_backup.h
 order_base.h
+order_cmd.h
 order_func.h
 order_type.h
 pbs.h
@@ -337,6 +340,7 @@ screenshot.h
 sdl.h
 sound/sdl_s.h
 video/sdl_v.h
+schdispatch.h
 settings_func.h
 settings_gui.h
 settings_internal.h
@@ -368,6 +372,7 @@ story_type.h
 strgen/strgen.h
 string_base.h
 string_func.h
+string_func_extra.h
 string_type.h
 stringfilter_type.h
 strings_func.h
@@ -403,6 +408,7 @@ transparency.h
 transparency_gui.h
 transport_type.h
 tunnelbridge.h
+tunnel_base.h
 vehicle_base.h
 vehicle_func.h
 vehicle_gui.h
@@ -451,6 +457,7 @@ core/backup_type.hpp
 core/bitmath_func.cpp
 core/bitmath_func.hpp
 core/container_func.hpp
+core/dyn_arena_alloc.hpp
 core/endian_func.hpp
 core/endian_type.hpp
 core/enum_type.hpp
@@ -515,6 +522,7 @@ plans_gui.cpp
 rail_gui.cpp
 road_gui.cpp
 roadveh_gui.cpp
+schdispatch_gui.cpp
 settings_gui.cpp
 ship_gui.cpp
 signs_gui.cpp
@@ -612,6 +620,7 @@ plans_cmd.cpp
 rail_cmd.cpp
 road_cmd.cpp
 roadveh_cmd.cpp
+schdispatch_cmd.cpp
 ship_cmd.cpp
 signs_cmd.cpp
 station_cmd.cpp
@@ -668,6 +677,7 @@ saveload/strings_sl.cpp
 saveload/story_sl.cpp
 saveload/subsidy_sl.cpp
 saveload/town_sl.cpp
+saveload/tunnel_sl.cpp
 saveload/vehicle_sl.cpp
 saveload/waypoint_sl.cpp
 saveload/signal_sl.cpp
@@ -1260,3 +1270,12 @@ saveload/tracerestrict_sl.cpp
 
 scope_info.cpp
 scope_info.h
+
+# Btree containers
+3rdparty/cpp-btree/btree.h
+3rdparty/cpp-btree/btree_container.h
+3rdparty/cpp-btree/btree_map.h
+3rdparty/cpp-btree/btree_set.h
+3rdparty/cpp-btree/safe_btree.h
+3rdparty/cpp-btree/safe_btree_map.h
+3rdparty/cpp-btree/safe_btree_set.h

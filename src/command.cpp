@@ -29,6 +29,7 @@
 #include "newgrf_text.h"
 #include "string_func.h"
 #include "scope_info.h"
+#include <array>
 
 #include "table/strings.h"
 
@@ -227,11 +228,24 @@ CommandProc CmdSetTimetableStart;
 CommandProc CmdOpenCloseAirport;
 
 CommandProc CmdProgramSignalTraceRestrict;
+CommandProc CmdCreateTraceRestrictSlot;
+CommandProc CmdAlterTraceRestrictSlot;
+CommandProc CmdDeleteTraceRestrictSlot;
+CommandProc CmdAddVehicleTraceRestrictSlot;
+CommandProc CmdRemoveVehicleTraceRestrictSlot;
 
 CommandProc CmdInsertSignalInstruction;
 CommandProc CmdModifySignalInstruction;
 CommandProc CmdRemoveSignalInstruction;
 CommandProc CmdSignalProgramMgmt;
+
+CommandProc CmdScheduledDispatch;
+CommandProc CmdScheduledDispatchAdd;
+CommandProc CmdScheduledDispatchRemove;
+CommandProc CmdScheduledDispatchSetDuration;
+CommandProc CmdScheduledDispatchSetStartDate;
+CommandProc CmdScheduledDispatchSetDelay;
+CommandProc CmdScheduledDispatchResetLastDispatch;
 
 CommandProc CmdAddPlan;
 CommandProc CmdAddPlanLine;
@@ -285,6 +299,7 @@ static const Command _command_proc_table[] = {
 	DEF_CMD(CmdPlantTree,                               CMD_AUTO, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_PLANT_TREE
 
 	DEF_CMD(CmdBuildVehicle,                       CMD_CLIENT_ID, CMDT_VEHICLE_CONSTRUCTION  ), // CMD_BUILD_VEHICLE
+	DEF_CMD(CmdBuildVehicle,         CMD_NO_TEST | CMD_CLIENT_ID, CMDT_VEHICLE_CONSTRUCTION  ), // CMD_BUILD_VEHICLE_NT
 	DEF_CMD(CmdSellVehicle,                        CMD_CLIENT_ID, CMDT_VEHICLE_CONSTRUCTION  ), // CMD_SELL_VEHICLE
 	DEF_CMD(CmdRefitVehicle,                                   0, CMDT_VEHICLE_CONSTRUCTION  ), // CMD_REFIT_VEHICLE
 	DEF_CMD(CmdSendVehicleToDepot,                             0, CMDT_VEHICLE_MANAGEMENT    ), // CMD_SEND_VEHICLE_TO_DEPOT
@@ -389,7 +404,7 @@ static const Command _command_proc_table[] = {
 	DEF_CMD(CmdVirtualTrainFromTemplateVehicle,    CMD_NO_TEST | CMD_ALL_TILES, CMDT_VEHICLE_MANAGEMENT), // CMD_VIRTUAL_TRAIN_FROM_TEMPLATE_VEHICLE
 	DEF_CMD(CmdVirtualTrainFromTrain,              CMD_NO_TEST | CMD_ALL_TILES, CMDT_VEHICLE_MANAGEMENT), // CMD_VIRTUAL_TRAIN_FROM_TRAIN
 	DEF_CMD(CmdDeleteVirtualTrain,                 CMD_ALL_TILES, CMDT_VEHICLE_MANAGEMENT    ), // CMD_DELETE_VIRTUAL_TRAIN
-	DEF_CMD(CmdBuildVirtualRailVehicle,            CMD_ALL_TILES, CMDT_VEHICLE_MANAGEMENT    ), // CMD_BUILD_VIRTUAL_RAIL_VEHICLE
+	DEF_CMD(CmdBuildVirtualRailVehicle,            CMD_NO_TEST | CMD_ALL_TILES, CMDT_VEHICLE_MANAGEMENT), // CMD_BUILD_VIRTUAL_RAIL_VEHICLE
 	DEF_CMD(CmdReplaceTemplateVehicle,             CMD_ALL_TILES, CMDT_VEHICLE_MANAGEMENT    ), // CMD_REPLACE_TEMPLATE_VEHICLE
 
 	DEF_CMD(CmdTemplateVehicleFromTrain,           CMD_ALL_TILES, CMDT_VEHICLE_MANAGEMENT    ), // CMD_CLONE_TEMPLATE_VEHICLE_FROM_TRAIN
@@ -425,11 +440,24 @@ static const Command _command_proc_table[] = {
 	DEF_CMD(CmdOpenCloseAirport,                               0, CMDT_ROUTE_MANAGEMENT      ), // CMD_OPEN_CLOSE_AIRPORT
 
 	DEF_CMD(CmdProgramSignalTraceRestrict,                     0, CMDT_OTHER_MANAGEMENT      ), // CMD_PROGRAM_TRACERESTRICT_SIGNAL
+	DEF_CMD(CmdCreateTraceRestrictSlot,                        0, CMDT_OTHER_MANAGEMENT      ), // CMD_CREATE_TRACERESTRICT_SLOT
+	DEF_CMD(CmdAlterTraceRestrictSlot,                         0, CMDT_OTHER_MANAGEMENT      ), // CMD_ALTER_TRACERESTRICT_SLOT
+	DEF_CMD(CmdDeleteTraceRestrictSlot,                        0, CMDT_OTHER_MANAGEMENT      ), // CMD_DELETE_TRACERESTRICT_SLOT
+	DEF_CMD(CmdAddVehicleTraceRestrictSlot,                    0, CMDT_OTHER_MANAGEMENT      ), // CMD_ADD_VEHICLE_TRACERESTRICT_SLOT
+	DEF_CMD(CmdRemoveVehicleTraceRestrictSlot,                 0, CMDT_OTHER_MANAGEMENT      ), // CMD_REMOVE_VEHICLE_TRACERESTRICT_SLOT
 
 	DEF_CMD(CmdInsertSignalInstruction,                        0, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_INSERT_SIGNAL_INSTRUCTION
 	DEF_CMD(CmdModifySignalInstruction,                        0, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_MODIFY_SIGNAL_INSTRUCTION
 	DEF_CMD(CmdRemoveSignalInstruction,                        0, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_REMOVE_SIGNAL_INSTRUCTION
 	DEF_CMD(CmdSignalProgramMgmt,                              0, CMDT_LANDSCAPE_CONSTRUCTION), // CMD_SIGNAL_PROGRAM_MGMT
+
+	DEF_CMD(CmdScheduledDispatch,                              0, CMDT_ROUTE_MANAGEMENT      ), // CMD_SCHEDULED_DISPATCH
+	DEF_CMD(CmdScheduledDispatchAdd,                           0, CMDT_ROUTE_MANAGEMENT      ), // CMD_SCHEDULED_DISPATCH_ADD
+	DEF_CMD(CmdScheduledDispatchRemove,                        0, CMDT_ROUTE_MANAGEMENT      ), // CMD_SCHEDULED_DISPATCH_REMOVE
+	DEF_CMD(CmdScheduledDispatchSetDuration,                   0, CMDT_ROUTE_MANAGEMENT      ), // CMD_SCHEDULED_DISPATCH_SET_DURATION
+	DEF_CMD(CmdScheduledDispatchSetStartDate,                  0, CMDT_ROUTE_MANAGEMENT      ), // CMD_SCHEDULED_DISPATCH_SET_START_DATE
+	DEF_CMD(CmdScheduledDispatchSetDelay,                      0, CMDT_ROUTE_MANAGEMENT      ), // CMD_SCHEDULED_DISPATCH_SET_DELAY
+	DEF_CMD(CmdScheduledDispatchResetLastDispatch,             0, CMDT_ROUTE_MANAGEMENT      ), // CMD_SCHEDULED_DISPATCH_RESET_LAST_DISPATCH
 
 	DEF_CMD(CmdAddPlan,                                        0, CMDT_OTHER_MANAGEMENT      ), // CMD_ADD_PLAN
 	DEF_CMD(CmdAddPlanLine,                                    0, CMDT_OTHER_MANAGEMENT      ), // CMD_ADD_PLAN_LINE
@@ -439,6 +467,87 @@ static const Command _command_proc_table[] = {
 
 	DEF_CMD(CmdDesyncCheck,                           CMD_SERVER, CMDT_SERVER_SETTING        ), // CMD_DESYNC_CHECK
 };
+
+
+/**
+ * List of flags for a command log entry
+ */
+enum CommandLogEntryFlagEnum {
+	CLEF_NONE                = 0x00, ///< no flag is set
+	CLEF_CMD_FAILED          = 0x01, ///< command failed
+	CLEF_GENERATING_WORLD    = 0x02, ///< generating world
+	CLEF_TEXT                = 0x04, ///< have command text
+	CLEF_ESTIMATE_ONLY       = 0x08, ///< estimate only
+	CLEF_ONLY_SENDING        = 0x10, ///< only sending
+	CLEF_MY_CMD              = 0x20, ///< locally generated command
+	CLEF_BINARY              = 0x40, ///< binary_length is > 0
+};
+DECLARE_ENUM_AS_BIT_SET(CommandLogEntryFlagEnum)
+typedef SimpleTinyEnumT<CommandLogEntryFlagEnum, byte> CommandLogEntryFlag;
+
+struct CommandLogEntry {
+	TileIndex tile;
+	uint32 p1;
+	uint32 p2;
+	uint32 cmd;
+	Date date;
+	DateFract date_fract;
+	uint8 tick_skip_counter;
+	CompanyByte current_company;
+	CompanyByte local_company;
+	CommandLogEntryFlag log_flags;
+
+	CommandLogEntry() { }
+
+	CommandLogEntry(const CommandCost &res, TileIndex tile, uint32 p1, uint32 p2, uint32 cmd, CommandLogEntryFlag log_flags)
+			: tile(tile), p1(p1), p2(p2), cmd(cmd), date(_date), date_fract(_date_fract), tick_skip_counter(_tick_skip_counter),
+			current_company(_current_company), local_company(_local_company), log_flags(log_flags)
+	{
+		if (res.Failed()) this->log_flags |= CLEF_CMD_FAILED;
+		if (_generating_world) this->log_flags |= CLEF_GENERATING_WORLD;
+	}
+};
+
+static std::array<CommandLogEntry, 128> command_log;
+static unsigned int command_log_count = 0;
+static unsigned int command_log_next = 0;
+
+void ClearCommandLog()
+{
+	command_log_count = 0;
+	command_log_next = 0;
+}
+
+char *DumpCommandLog(char *buffer, const char *last)
+{
+	const unsigned int count = min<unsigned int>(command_log_count, command_log.size());
+	unsigned int log_index = command_log_next;
+
+	buffer += seprintf(buffer, last, "Command Log:\n Showing most recent %u of %u commands\n", count, command_log_count);
+
+	for (unsigned int i = 0 ; i < count; i++) {
+		if (log_index > 0) {
+			log_index--;
+		} else {
+			log_index = command_log.size() - 1;
+		}
+		const CommandLogEntry &entry = command_log[log_index];
+
+		auto fc = [&](CommandLogEntryFlagEnum flag, char c) -> char {
+			return entry.log_flags & flag ? c : '-';
+		};
+
+		YearMonthDay ymd;
+		ConvertDateToYMD(entry.date, &ymd);
+		buffer += seprintf(buffer, last, " %3u | %4i-%02i-%02i, %2i, %3i | ", i, ymd.year, ymd.month + 1, ymd.day, entry.date_fract, entry.tick_skip_counter);
+		buffer += seprintf(buffer, last, "%c%c%c%c%c%c%c | ",
+				fc(CLEF_BINARY, 'b'), fc(CLEF_MY_CMD, 'm'), fc(CLEF_ONLY_SENDING, 's'), fc(CLEF_ESTIMATE_ONLY, 'e'),
+				fc(CLEF_TEXT, 't'), fc(CLEF_GENERATING_WORLD, 'g'), fc(CLEF_CMD_FAILED, 'f'));
+		buffer += seprintf(buffer, last, " %7d x %7d, p1: 0x%08X, p2: 0x%08X, cc: %2u, lc: %2u, cmd: 0x%08X (%s)\n",
+				TileX(entry.tile), TileY(entry.tile), entry.p1, entry.p2, (uint) entry.current_company, (uint) entry.local_company, entry.cmd, GetCommandName(entry.cmd));
+	}
+	return buffer;
+}
 
 /*!
  * This function range-checks a cmd, and checks if the cmd is not NULL
@@ -686,6 +795,17 @@ bool DoCommandP(TileIndex tile, uint32 p1, uint32 p2, uint32 cmd, CommandCallbac
 	if (!estimate_only && !only_sending && callback != NULL) {
 		callback(res, tile, p1, p2);
 	}
+
+	CommandLogEntryFlag log_flags;
+	log_flags = CLEF_NONE;
+	if (!StrEmpty(text)) log_flags |= CLEF_TEXT;
+	if (estimate_only) log_flags |= CLEF_ESTIMATE_ONLY;
+	if (only_sending) log_flags |= CLEF_ONLY_SENDING;
+	if (my_cmd) log_flags |= CLEF_MY_CMD;
+	if (binary_length > 0) log_flags |= CLEF_BINARY;
+	command_log[command_log_next] = CommandLogEntry(res, tile, p1, p2, cmd, log_flags);
+	command_log_next = (command_log_next + 1) % command_log.size();
+	command_log_count++;
 
 	return res.Succeeded();
 }

@@ -162,7 +162,7 @@ static bool IsValidCompanyManagerFace(CompanyManagerFace cmf)
 	for (CompanyManagerFaceVariable cmfv = CMFV_CHEEKS; cmfv < CMFV_END; cmfv++) {
 		switch (cmfv) {
 			case CMFV_MOUSTACHE:   if (!has_moustache)   continue; break;
-			case CMFV_LIPS:        // FALL THROUGH
+			case CMFV_LIPS:
 			case CMFV_NOSE:        if (has_moustache)    continue; break;
 			case CMFV_TIE_EARRING: if (!has_tie_earring) continue; break;
 			case CMFV_GLASSES:     if (!has_glasses)     continue; break;
@@ -1165,4 +1165,19 @@ int CompanyServiceInterval(const Company *c, VehicleType type)
 		case VEH_AIRCRAFT: return vds->servint_aircraft;
 		case VEH_SHIP:     return vds->servint_ships;
 	}
+}
+
+char *CompanyInfrastructure::Dump(char *buffer, const char *last) const
+{
+	for (RailType rt = RAILTYPE_BEGIN; rt != RAILTYPE_END; rt++) {
+		if (rail[rt]) buffer += seprintf(buffer, last, "Rail: %s: %u\n", GetStringPtr(GetRailTypeInfo(rt)->strings.name), rail[rt]);
+	}
+	buffer += seprintf(buffer, last, "Signal: %u\n", signal);
+	buffer += seprintf(buffer, last, "Road: %u\n", road[ROADTYPE_ROAD]);
+	buffer += seprintf(buffer, last, "Tram: %u\n", road[ROADTYPE_TRAM]);
+	buffer += seprintf(buffer, last, "Water: %u\n", water);
+	buffer += seprintf(buffer, last, "Station: %u\n", station);
+	buffer += seprintf(buffer, last, "Airport: %u\n", airport);
+
+	return buffer;
 }

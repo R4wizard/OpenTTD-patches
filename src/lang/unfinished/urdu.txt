@@ -1675,7 +1675,6 @@ STR_NETWORK_COMPANY_LIST_NEW_COMPANY                            :{WHITE}نئی �
 # Network client list
 STR_NETWORK_CLIENTLIST_KICK                                     :ٹھڈا
 STR_NETWORK_CLIENTLIST_BAN                                      :پابندی
-STR_NETWORK_CLIENTLIST_GIVE_MONEY                               :پیسے دئیں
 STR_NETWORK_CLIENTLIST_SPEAK_TO_ALL                             :سب سے بات کریں
 STR_NETWORK_CLIENTLIST_SPEAK_TO_COMPANY                         :کمپنی سے بات کریں
 STR_NETWORK_CLIENTLIST_SPEAK_TO_CLIENT                          :پرائیویٹ پیغام
@@ -1684,7 +1683,6 @@ STR_NETWORK_SERVER                                              :سرور
 STR_NETWORK_CLIENT                                              :کلائینٹ
 STR_NETWORK_SPECTATORS                                          :ناظرین
 
-STR_NETWORK_GIVE_MONEY_CAPTION                                  :{WHITE}بتائیں آپ کتنے پیسے بھیجنا چاہتے ہیں
 
 # Network set password
 STR_COMPANY_PASSWORD_CANCEL                                     :{BLACK}بتایا گیا پاس ورڈ محفوظ نہ کریں
@@ -2295,6 +2293,8 @@ STR_COMPANY_VIEW_INFRASTRUCTURE_AIRPORT                         :{COMMA}{WHITE} 
 STR_COMPANY_VIEW_INFRASTRUCTURE_NONE                            :{WHITE}کوئی نہیں
 
 STR_COMPANY_VIEW_INFRASTRUCTURE_BUTTON                          :{BLACK}تفصیلات
+STR_COMPANY_VIEW_GIVE_MONEY_BUTTON                              :{BLACK}پیسے دئیں
+STR_COMPANY_VIEW_GIVE_MONEY_QUERY_CAPTION                       :بتائیں آپ کتنے پیسے بھیجنا چاہتے ہیں
 
 
 
@@ -2321,6 +2321,7 @@ STR_INDUSTRY_VIEW_PRODUCTION_LAST_MONTH_TITLE                   :{BLACK}گزشت
 ############ range for requires starts
 ############ range for requires ends
 
+
 ############ range for produces starts
 ############ range for produces ends
 
@@ -2344,6 +2345,7 @@ STR_VEHICLE_LIST_MANAGE_LIST                                    :{BLACK}فہرس
 
 
 STR_GROUPS_CLICK_ON_GROUP_FOR_TOOLTIP                           :{BLACK}گروپ ۔ اس گروپ ک تمام گاڑیاں دیکھنے کے لیے اسے دبایں۔ پکڑ کے اوپر نیچے بھی کر سکتے ہیں۔
+
 
 
 
@@ -2404,8 +2406,6 @@ STR_DEPOT_VEHICLE_TOOLTIP_CARGO                                 :{}{CARGO_LONG} 
 
 # Engine preview window
 
-STR_ENGINE_PREVIEW_COST_MAX_SPEED_RANGE_CAPACITY_CAPACITY_RUNCOST:{BLACK}قیمت: {CURRENCY_LONG} حد رفتار: {VELOCITY} پہنچ: {COMMA} ٹائلیں{} گنجائش: {CARGO_LONG}, {CARGO_LONG}{}چلانے کا خرچہ: {CURRENCY_LONG} سالانہ
-STR_ENGINE_PREVIEW_COST_MAX_SPEED_RANGE_CAPACITY_RUNCOST        :{BLACK}قیمت: {CURRENCY_LONG} حد رفتار: {VELOCITY} پہنچ: {COMMA} ٹائلیں{} گنجائش: {CARGO_LONG}{}چلانے کا خرچہ: {CURRENCY_LONG} سالانہ
 
 # Autoreplace window
 
@@ -2446,7 +2446,6 @@ STR_VEHICLE_COMMAND_STARTED                                     :{GREEN} شرو�
 
 # The next two need to stay in this order
 
-STR_VEHICLE_INFO_MAX_SPEED_RANGE                                :{BLACK}حد رفتار: {LTBLUE}{VELOCITY} {BLACK} پہنچ: {LTBLUE}{COMMA} ٹائلیں
 
 
 

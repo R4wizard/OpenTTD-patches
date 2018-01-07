@@ -152,6 +152,17 @@
 	 * is the format string, second argument is start of values passed to printf. */
 	#define WARN_FORMAT(string, args) __attribute__ ((format (printf, string, args)))
 	#define FINAL final
+
+	/* Use fallthrough attribute where supported */
+	#if __GNUC__ >= 7
+		#if __cplusplus > 201402L // C++17
+			#define FALLTHROUGH [[fallthrough]]
+		#else
+			#define FALLTHROUGH __attribute__((fallthrough))
+		#endif
+	#else
+		#define FALLTHROUGH
+	#endif
 #endif /* __GNUC__ || __clang__ */
 
 #if defined(__WATCOMC__)
@@ -160,6 +171,7 @@
 	#define GCC_PACK
 	#define WARN_FORMAT(string, args)
 	#define FINAL
+	#define FALLTHROUGH
 	#include <malloc.h>
 #endif /* __WATCOMC__ */
 
@@ -230,6 +242,13 @@
 	#define GCC_PACK
 	#define WARN_FORMAT(string, args)
 	#define FINAL sealed
+
+	/* fallthrough attribute, VS 2017 */
+	#if (_MSC_VER >= 1910)
+		#define FALLTHROUGH [[fallthrough]]
+	#else
+		#define FALLTHROUGH
+	#endif
 
 	#if defined(WINCE)
 		int CDECL vsnprintf(char *str, size_t size, const char *format, va_list ap);
@@ -320,10 +339,12 @@
 /* MSVCRT of course has to have a different syntax for long long *sigh* */
 #if defined(_MSC_VER) || defined(__MINGW32__)
 	#define OTTD_PRINTF64 "%I64d"
+	#define OTTD_PRINTF64U "%I64u"
 	#define OTTD_PRINTFHEX64 "%I64x"
 	#define PRINTF_SIZE "%Iu"
 #else
 	#define OTTD_PRINTF64 "%lld"
+	#define OTTD_PRINTF64U "%llu"
 	#define OTTD_PRINTFHEX64 "%llx"
 	#define PRINTF_SIZE "%zu"
 #endif

@@ -165,7 +165,7 @@ public:
 	/** Generate the crash log. */
 	bool MakeCrashLog()
 	{
-		char buffer[65536];
+		char buffer[65536 * 4];
 		bool ret = true;
 
 		printf("Crash encountered, generating crash log...\n");
@@ -202,8 +202,9 @@ public:
 
 		char message[1024];
 		seprintf(message, lastof(message),
-				 "Please send the generated crash information and the last (auto)save to the developers. "
-				 "This will greatly help debugging. The correct place to do this is http://bugs.openttd.org.\n\n"
+				 "Please send the generated crash information and the last (auto)save to the patchpack developer. "
+				 "This will greatly help debugging. The correct place to do this is https://www.tt-forums.net/viewtopic.php?f=33&t=73469"
+				 " or https://github.com/JGRennison/OpenTTD-patches\n\n"
 				 "Generated file(s):\n%s\n%s\n%s",
 				 this->filename_log, this->filename_save, this->filename_screenshot);
 
@@ -226,16 +227,10 @@ void CDECL HandleCrash(int signum)
 		signal(*i, SIG_DFL);
 	}
 
-	if (GamelogTestEmergency()) {
+	const char *abort_reason = CrashLog::GetAbortCrashlogReason();
+	if (abort_reason != NULL) {
 		ShowMacDialog("A serious fault condition occurred in the game. The game will shut down.",
-				"As you loaded an emergency savegame no crash information will be generated.\n",
-				"Quit");
-		abort();
-	}
-
-	if (SaveloadCrashWithMissingNewGRFs()) {
-		ShowMacDialog("A serious fault condition occurred in the game. The game will shut down.",
-				"As you loaded an savegame for which you do not have the required NewGRFs no crash information will be generated.\n",
+				abort_reason,
 				"Quit");
 		abort();
 	}

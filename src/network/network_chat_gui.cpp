@@ -110,7 +110,7 @@ void CDECL NetworkAddChatMessage(TextColour colour, uint duration, const char *m
 void NetworkReInitChatBoxSize()
 {
 	_chatmsg_box.y       = 3 * FONT_HEIGHT_NORMAL;
-	_chatmsg_box.height  = MAX_CHAT_MESSAGES * (FONT_HEIGHT_NORMAL + NETWORK_CHAT_LINE_SPACING) + 2;
+	_chatmsg_box.height  = MAX_CHAT_MESSAGES * (FONT_HEIGHT_NORMAL + NETWORK_CHAT_LINE_SPACING) + 4;
 	_chatmessage_backup  = ReallocT(_chatmessage_backup, _chatmsg_box.width * _chatmsg_box.height * BlitterFactory::GetCurrentBlitter()->GetBytesPerPixel());
 }
 
@@ -272,8 +272,9 @@ void NetworkDrawChatMessage()
 static void SendChat(const char *buf, DestType type, int dest)
 {
 	if (StrEmpty(buf)) return;
+	assert(type >= DESTTYPE_BROADCAST && type <= DESTTYPE_CLIENT);
 	if (!_network_server) {
-		MyClient::SendChat((NetworkAction)(NETWORK_ACTION_CHAT + type), type, dest, buf, 0);
+		MyClient::SendChat((NetworkAction)(NETWORK_ACTION_CHAT + type), type, dest, buf, NetworkTextMessageData());
 	} else {
 		NetworkServerSendChat((NetworkAction)(NETWORK_ACTION_CHAT + type), type, dest, buf, CLIENT_ID_SERVER);
 	}
@@ -303,7 +304,8 @@ struct NetworkChatWindow : public Window {
 		static const StringID chat_captions[] = {
 			STR_NETWORK_CHAT_ALL_CAPTION,
 			STR_NETWORK_CHAT_COMPANY_CAPTION,
-			STR_NETWORK_CHAT_CLIENT_CAPTION
+			STR_NETWORK_CHAT_CLIENT_CAPTION,
+			STR_NULL,
 		};
 		assert((uint)this->dtype < lengthof(chat_captions));
 		this->dest_string = chat_captions[this->dtype];
@@ -492,10 +494,13 @@ struct NetworkChatWindow : public Window {
 	virtual void OnClick(Point pt, int widget, int click_count)
 	{
 		switch (widget) {
-			/* Send */
-			case WID_NC_SENDBUTTON: SendChat(this->message_editbox.text.buf, this->dtype, this->dest);
-				/* FALL THROUGH */
-			case WID_NC_CLOSE: /* Cancel */ delete this; break;
+			case WID_NC_SENDBUTTON: /* Send */
+				SendChat(this->message_editbox.text.buf, this->dtype, this->dest);
+				FALLTHROUGH;
+
+			case WID_NC_CLOSE: /* Cancel */
+				delete this;
+				break;
 		}
 	}
 

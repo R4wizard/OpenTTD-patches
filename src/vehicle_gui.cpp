@@ -41,6 +41,9 @@
 #include "train.h"
 #include "tbtr_template_gui_main.h"
 #include "zoom_func.h"
+#include "tracerestrict.h"
+
+#include <vector>
 
 #include "safeguards.h"
 
@@ -139,10 +142,126 @@ void BaseVehicleListWindow::BuildVehicleList()
 
 	GenerateVehicleSortList(&this->vehicles, this->vli);
 
+	this->FilterVehicleList();
+
 	this->unitnumber_digits = GetUnitNumberDigits(this->vehicles);
 
 	this->vehicles.RebuildDone();
 	this->vscroll->SetCount(this->vehicles.Length());
+}
+
+/** Cargo filter functions */
+static bool CDECL CargoFilter(const Vehicle * const *vid, const CargoID cid)
+{
+	if (cid == BaseVehicleListWindow::CF_ANY) {
+		return true;
+	} else if (cid == BaseVehicleListWindow::CF_NONE) {
+		for (const Vehicle *w = (*vid); w != NULL; w = w->Next()) {
+			if (w->cargo_cap > 0) {
+				return false;
+			}
+		}
+		return true;
+	} else if (cid == BaseVehicleListWindow::CF_FREIGHT) {
+		bool have_capacity = false;
+		for (const Vehicle *w = (*vid); w != NULL; w = w->Next()) {
+			if (w->cargo_cap) {
+				if (IsCargoInClass(w->cargo_type, CC_PASSENGERS)) {
+					return false;
+				} else {
+					have_capacity = true;
+				}
+			}
+		}
+		return have_capacity;
+	} else {
+		for (const Vehicle *w = (*vid); w != NULL; w = w->Next()) {
+			if (w->cargo_cap > 0 && w->cargo_type == cid) {
+				return true;
+			}
+		}
+		return false;
+	}
+}
+
+static GUIVehicleList::FilterFunction * const _filter_funcs[] = {
+	&CargoFilter,
+};
+
+/** Set cargo filter list item index. */
+void BaseVehicleListWindow::SetCargoFilterIndex(int index)
+{
+	if (this->cargo_filter_criteria != index) {
+		this->cargo_filter_criteria = index;
+		/* deactivate filter if criteria is 'Show All', activate it otherwise */
+		this->vehicles.SetFilterState(this->cargo_filter[this->cargo_filter_criteria] != CF_ANY);
+		this->vehicles.SetFilterType(0);
+		this->vehicles.ForceRebuild();
+	}
+}
+
+/** Populate the filter list and set the cargo filter criteria. */
+void BaseVehicleListWindow::SetCargoFilterArray()
+{
+	uint filter_items = 0;
+
+	/* Add item for disabling filtering. */
+	this->cargo_filter[filter_items] = CF_ANY;
+	this->cargo_filter_texts[filter_items] = STR_PURCHASE_INFO_ALL_TYPES;
+	this->cargo_filter_criteria = filter_items;
+	filter_items++;
+
+	/* Add item for freight (i.e. vehicles with cargo capacity and with no passenger capacity) */
+	this->cargo_filter[filter_items] = CF_FREIGHT;
+	this->cargo_filter_texts[filter_items] = STR_CARGO_TYPE_FREIGHT;
+	filter_items++;
+
+	/* Add item for vehicles not carrying anything, e.g. train engines.
+	* This could also be useful for eyecandy vehicles of other types, but is likely too confusing for joe, */
+	this->cargo_filter[filter_items] = CF_NONE;
+	this->cargo_filter_texts[filter_items] = STR_LAND_AREA_INFORMATION_LOCAL_AUTHORITY_NONE;
+	filter_items++;
+
+	/* Collect available cargo types for filtering. */
+	const CargoSpec *cs;
+	FOR_ALL_SORTED_STANDARD_CARGOSPECS(cs) {
+		this->cargo_filter[filter_items] = cs->Index();
+		this->cargo_filter_texts[filter_items] = cs->name;
+		filter_items++;
+	}
+
+	/* Terminate the filter list. */
+	this->cargo_filter_texts[filter_items] = INVALID_STRING_ID;
+
+	this->vehicles.SetFilterFuncs(_filter_funcs);
+	this->vehicles.SetFilterState(this->cargo_filter[this->cargo_filter_criteria] != CF_ANY);
+}
+
+/** Filter the engine list against the currently selected cargo filter */
+void BaseVehicleListWindow::FilterVehicleList()
+{
+	this->vehicles.Filter(this->cargo_filter[this->cargo_filter_criteria]);
+	if (0 == this->vehicles.Length()) {
+		// no vehicle passed through the filter, invalidate the previously selected vehicle
+		this->vehicle_sel = INVALID_VEHICLE;
+	} else if (this->vehicle_sel != INVALID_VEHICLE && !this->vehicles.Contains(Vehicle::Get(this->vehicle_sel))) { // previously selected engine didn't pass the filter, remove selection
+		this->vehicle_sel = INVALID_VEHICLE;
+	}
+}
+
+void BaseVehicleListWindow::OnInit()
+{
+	this->SetCargoFilterArray();
+}
+
+void BaseVehicleListWindow::CheckCargoFilterEnableState(int plane_widget, bool re_init, bool possible)
+{
+	NWidgetStacked *sel = this->GetWidget<NWidgetStacked>(plane_widget);
+	const int plane = (possible && _settings_client.gui.show_veh_list_cargo_filter) ? 0 : SZSP_NONE;
+	if (plane != sel->shown_plane) {
+		sel->SetDisplayedPlane(plane);
+		if (re_init) this->ReInit();
+	}
 }
 
 /**
@@ -177,6 +296,15 @@ Dimension BaseVehicleListWindow::GetActionDropdownSize(bool show_autoreplace, bo
 }
 
 /**
+ * Whether the Action dropdown window should be shown/available.
+ * @return Whether available
+ */
+bool BaseVehicleListWindow::ShouldShowActionDropdownList() const
+{
+	return this->vehicles.Length() != 0 || (this->vli.vtype == VEH_TRAIN && _settings_client.gui.show_adv_tracerestrict_features);
+}
+
+/**
  * Display the Action dropdown window.
  * @param show_autoreplace If true include the autoreplace item.
  * @param show_group If true include group-related stuff.
@@ -186,17 +314,21 @@ DropDownList *BaseVehicleListWindow::BuildActionDropdownList(bool show_autorepla
 		StringID change_order_str, bool show_create_group)
 {
 	DropDownList *list = new DropDownList();
+	bool disable = this->vehicles.Length() == 0;
 
-	if (show_autoreplace) *list->Append() = new DropDownListStringItem(STR_VEHICLE_LIST_REPLACE_VEHICLES, ADI_REPLACE, false);
+	if (show_autoreplace) *list->Append() = new DropDownListStringItem(STR_VEHICLE_LIST_REPLACE_VEHICLES, ADI_REPLACE, disable);
 	if (show_autoreplace && show_template_replace) {
-		*list->Append() = new DropDownListStringItem(STR_TMPL_TEMPLATE_REPLACEMENT, ADI_TEMPLATE_REPLACE, false);
+		*list->Append() = new DropDownListStringItem(STR_TMPL_TEMPLATE_REPLACEMENT, ADI_TEMPLATE_REPLACE, disable);
 	}
-	*list->Append() = new DropDownListStringItem(STR_VEHICLE_LIST_SEND_FOR_SERVICING, ADI_SERVICE, false);
-	*list->Append() = new DropDownListStringItem(this->vehicle_depot_name[this->vli.vtype], ADI_DEPOT, false);
+	*list->Append() = new DropDownListStringItem(STR_VEHICLE_LIST_SEND_FOR_SERVICING, ADI_SERVICE, disable);
+	*list->Append() = new DropDownListStringItem(this->vehicle_depot_name[this->vli.vtype], ADI_DEPOT, disable);
 
 	if (show_group) {
-		*list->Append() = new DropDownListStringItem(STR_GROUP_ADD_SHARED_VEHICLE, ADI_ADD_SHARED, false);
-		*list->Append() = new DropDownListStringItem(STR_GROUP_REMOVE_ALL_VEHICLES, ADI_REMOVE_ALL, false);
+		*list->Append() = new DropDownListStringItem(STR_GROUP_ADD_SHARED_VEHICLE, ADI_ADD_SHARED, disable);
+		*list->Append() = new DropDownListStringItem(STR_GROUP_REMOVE_ALL_VEHICLES, ADI_REMOVE_ALL, disable);
+	}
+	if (this->vli.vtype == VEH_TRAIN && _settings_client.gui.show_adv_tracerestrict_features) {
+		*list->Append() = new DropDownListStringItem(STR_TRACE_RESTRICT_SLOT_MANAGE, ADI_TRACERESTRICT_SLOT_MGMT, false);
 	}
 	if (change_order_str != 0) {
 		*list->Append() = new DropDownListStringItem(change_order_str, ADI_CHANGE_ORDER, false);
@@ -907,8 +1039,8 @@ struct RefitWindow : public Window {
 				Vehicle *v = Vehicle::Get(this->window_number);
 				this->selected_vehicle = v->index;
 				this->num_vehicles = UINT8_MAX;
-				/* FALL THROUGH */
 			}
+			FALLTHROUGH;
 
 			case 2: { // The vehicle selection has changed; rebuild the entire list.
 				if (!gui_scope) break;
@@ -933,8 +1065,8 @@ struct RefitWindow : public Window {
 					this->information_width = max_width;
 					this->ReInit();
 				}
-				/* FALL THROUGH */
 			}
+			FALLTHROUGH;
 
 			case 1: // A new cargo has been selected.
 				if (!gui_scope) break;
@@ -995,8 +1127,8 @@ struct RefitWindow : public Window {
 					if (_ctrl_pressed) this->num_vehicles = UINT8_MAX;
 					break;
 				}
-				/* FALL THROUGH */
 			}
+			FALLTHROUGH;
 
 			default:
 				/* Clear the selection. */
@@ -1030,8 +1162,8 @@ struct RefitWindow : public Window {
 				this->InvalidateData(1);
 
 				if (click_count == 1) break;
-				/* FALL THROUGH */
 			}
+			FALLTHROUGH;
 
 			case WID_VR_REFIT: // refit button
 				if (this->cargo != NULL) {
@@ -1368,6 +1500,9 @@ static const NWidgetPart _nested_vehicle_list[] = {
 	NWidget(NWID_HORIZONTAL),
 		NWidget(WWT_PUSHTXTBTN, COLOUR_GREY, WID_VL_SORT_ORDER), SetMinimalSize(81, 12), SetFill(0, 1), SetDataTip(STR_BUTTON_SORT_BY, STR_TOOLTIP_SORT_ORDER),
 		NWidget(WWT_DROPDOWN, COLOUR_GREY, WID_VL_SORT_BY_PULLDOWN), SetMinimalSize(167, 12), SetFill(0, 1), SetDataTip(0x0, STR_TOOLTIP_SORT_CRITERIA),
+		NWidget(NWID_SELECTION, INVALID_COLOUR, WID_VL_FILTER_BY_CARGO_SEL),
+			NWidget(WWT_DROPDOWN, COLOUR_GREY, WID_VL_FILTER_BY_CARGO), SetMinimalSize(167, 12), SetFill(0, 1), SetDataTip(STR_JUST_STRING, STR_TOOLTIP_FILTER_CRITERIA),
+		EndContainer(),
 		NWidget(WWT_PANEL, COLOUR_GREY), SetMinimalSize(12, 12), SetFill(1, 1), SetResize(1, 0),
 		EndContainer(),
 	EndContainer(),
@@ -1587,6 +1722,8 @@ public:
 
 		this->CreateNestedTree();
 
+		this->CheckCargoFilterEnableState(WID_VL_FILTER_BY_CARGO_SEL, false, this->vli.type != VL_SHARED_ORDERS && this->vli.type != VL_SINGLE_VEH);
+
 		this->vscroll = this->GetScrollbar(WID_VL_SCROLLBAR);
 
 		this->vehicles.SetListing(*this->sorting);
@@ -1658,6 +1795,10 @@ public:
 				SetDParam(0, STR_VEHICLE_LIST_AVAILABLE_TRAINS + this->vli.vtype);
 				break;
 
+			case WID_VL_FILTER_BY_CARGO:
+				SetDParam(0, this->cargo_filter_texts[this->cargo_filter_criteria]);
+				break;
+
 			case WID_VL_CAPTION: {
 				switch (this->vli.type) {
 					case VL_SHARED_ORDERS: // Shared Orders
@@ -1713,7 +1854,7 @@ public:
 		this->BuildVehicleList();
 		this->SortVehicleList();
 
-		if (this->vehicles.Length() == 0 && this->IsWidgetLowered(WID_VL_MANAGE_VEHICLES_DROPDOWN)) {
+		if (!this->ShouldShowActionDropdownList() && this->IsWidgetLowered(WID_VL_MANAGE_VEHICLES_DROPDOWN)) {
 			HideDropDownMenu(this);
 		}
 
@@ -1727,8 +1868,8 @@ public:
 		}
 		if (this->owner == _local_company) {
 			this->SetWidgetDisabledState(WID_VL_AVAILABLE_VEHICLES, this->vli.type != VL_STANDARD);
+			this->SetWidgetDisabledState(WID_VL_MANAGE_VEHICLES_DROPDOWN, !this->ShouldShowActionDropdownList());
 			this->SetWidgetsDisabledState(this->vehicles.Length() == 0,
-				WID_VL_MANAGE_VEHICLES_DROPDOWN,
 				WID_VL_STOP_ALL,
 				WID_VL_START_ALL,
 				WIDGET_LIST_END);
@@ -1736,6 +1877,8 @@ public:
 
 		/* Set text of sort by dropdown widget. */
 		this->GetWidget<NWidgetCore>(WID_VL_SORT_BY_PULLDOWN)->widget_data = this->vehicle_sorter_names[this->vehicles.SortType()];
+
+		this->GetWidget<NWidgetCore>(WID_VL_FILTER_BY_CARGO)->widget_data = this->cargo_filter_texts[this->cargo_filter_criteria];
 
 		this->DrawWidgets();
 	}
@@ -1750,8 +1893,12 @@ public:
 
 			case WID_VL_SORT_BY_PULLDOWN:// Select sorting criteria dropdown menu
 				ShowDropDownMenu(this, this->vehicle_sorter_names, this->vehicles.SortType(), WID_VL_SORT_BY_PULLDOWN, 0,
-						(this->vli.vtype == VEH_TRAIN || this->vli.vtype == VEH_ROAD) ? 0 : (1 << 10), 0, DDSF_LOST_FOCUS);
+						(this->vli.vtype == VEH_TRAIN || this->vli.vtype == VEH_ROAD) ? 0 : this->vehicle_sorter_non_ground_veh_disable_mask, 0, DDSF_LOST_FOCUS);
 				return;
+
+			case WID_VL_FILTER_BY_CARGO: // Cargo filter dropdown
+				ShowDropDownMenu(this, this->cargo_filter_texts, this->cargo_filter_criteria, WID_VL_FILTER_BY_CARGO, 0, 0);
+				break;
 
 			case WID_VL_LIST: { // Matrix to show vehicles
 				uint id_v = this->vscroll->GetScrolledRowFromWidget(pt.y, this, WID_VL_LIST);
@@ -1769,7 +1916,7 @@ public:
 			case WID_VL_MANAGE_VEHICLES_DROPDOWN: {
 				DropDownList *list = this->BuildActionDropdownList(VehicleListIdentifier::UnPack(this->window_number).type == VL_STANDARD, false,
 						this->vli.vtype == VEH_TRAIN, this->GetChangeOrderStringID(), true);
-				ShowDropDownList(this, list, 0, WID_VL_MANAGE_VEHICLES_DROPDOWN);
+				ShowDropDownList(this, list, -1, WID_VL_MANAGE_VEHICLES_DROPDOWN);
 				break;
 			}
 
@@ -1786,8 +1933,11 @@ public:
 			case WID_VL_SORT_BY_PULLDOWN:
 				this->vehicles.SetSortType(index);
 				break;
+			case WID_VL_FILTER_BY_CARGO:
+				this->SetCargoFilterIndex(index);
+				break;
 			case WID_VL_MANAGE_VEHICLES_DROPDOWN:
-				assert(this->vehicles.Length() != 0);
+				assert(this->ShouldShowActionDropdownList());
 
 				switch (index) {
 					case ADI_REPLACE: // Replace window
@@ -1810,6 +1960,12 @@ public:
 					case ADI_CREATE_GROUP:
 						ShowQueryString(STR_EMPTY, STR_GROUP_RENAME_CAPTION, MAX_LENGTH_GROUP_NAME_CHARS, this, CS_ALPHANUMERAL, QSF_ENABLE_DEFAULT | QSF_LEN_IN_CHARS);
 						break;
+
+					case ADI_TRACERESTRICT_SLOT_MGMT: {
+						extern void ShowTraceRestrictSlotWindow(CompanyID company);
+						ShowTraceRestrictSlotWindow(this->owner);
+						break;
+					}
 
 					default: NOT_REACHED();
 				}
@@ -1901,9 +2057,15 @@ public:
 		if (data == 0) {
 			/* This needs to be done in command-scope to enforce rebuilding before resorting invalid data */
 			this->vehicles.ForceRebuild();
+			if (this->vli.type == VL_SHARED_ORDERS && !_settings_client.gui.enable_single_veh_shared_order_gui && this->vehicles.Length() == 1) {
+				delete this;
+				return;
+			}
 		} else {
 			this->vehicles.ForceResort();
 		}
+
+		this->CheckCargoFilterEnableState(WID_VL_FILTER_BY_CARGO_SEL, true, this->vli.type != VL_SHARED_ORDERS && this->vli.type != VL_SINGLE_VEH);
 	}
 };
 
@@ -2021,7 +2183,7 @@ static const NWidgetPart _nested_train_vehicle_details_widgets[] = {
 		NWidget(WWT_PUSHARROWBTN, COLOUR_GREY, WID_VD_DECREASE_SERVICING_INTERVAL), SetFill(0, 1),
 				SetDataTip(AWV_DECREASE, STR_VEHICLE_DETAILS_DECREASE_SERVICING_INTERVAL_TOOLTIP),
 		NWidget(WWT_PUSHARROWBTN, COLOUR_GREY, WID_VD_INCREASE_SERVICING_INTERVAL), SetFill(0, 1),
-				SetDataTip(AWV_INCREASE, STR_VEHICLE_DETAILS_DECREASE_SERVICING_INTERVAL_TOOLTIP),
+				SetDataTip(AWV_INCREASE, STR_VEHICLE_DETAILS_INCREASE_SERVICING_INTERVAL_TOOLTIP),
 		NWidget(WWT_DROPDOWN, COLOUR_GREY, WID_VD_SERVICE_INTERVAL_DROPDOWN), SetFill(0, 1),
 				SetDataTip(STR_EMPTY, STR_SERVICE_INTERVAL_DROPDOWN_TOOLTIP),
 		NWidget(WWT_PANEL, COLOUR_GREY, WID_VD_SERVICING_INTERVAL), SetFill(1, 1), SetResize(1, 0), EndContainer(),
@@ -2059,6 +2221,7 @@ struct VehicleDetailsWindow : Window {
 	Scrollbar *vscroll;
 	bool vehicle_group_line_shown;
 	bool vehicle_weight_ratio_line_shown;
+	bool vehicle_slots_line_shown;
 
 	/** Initialize a newly created vehicle details window */
 	VehicleDetailsWindow(WindowDesc *desc, WindowNumber window_number) : Window(desc)
@@ -2127,13 +2290,13 @@ struct VehicleDetailsWindow : Window {
 		uint desired_height;
 		if (v->HasArticulatedPart()) {
 			/* An articulated RV has its text drawn under the sprite instead of after it, hence 15 pixels extra. */
-			desired_height = WD_FRAMERECT_TOP + ScaleGUITrad(15) + 3 * FONT_HEIGHT_NORMAL + 2 + WD_FRAMERECT_BOTTOM;
+			desired_height = WD_FRAMERECT_TOP + ScaleGUITrad(15) + 4 * FONT_HEIGHT_NORMAL + 3 + WD_FRAMERECT_BOTTOM;
 			/* Add space for the cargo amount for each part. */
 			for (const Vehicle *u = v; u != NULL; u = u->Next()) {
 				if (u->cargo_cap != 0) desired_height += FONT_HEIGHT_NORMAL + 1;
 			}
 		} else {
-			desired_height = WD_FRAMERECT_TOP + 4 * FONT_HEIGHT_NORMAL + 3 + WD_FRAMERECT_BOTTOM;
+			desired_height = WD_FRAMERECT_TOP + 5 * FONT_HEIGHT_NORMAL + 4 + WD_FRAMERECT_BOTTOM;
 		}
 		return desired_height;
 	}
@@ -2148,6 +2311,12 @@ struct VehicleDetailsWindow : Window {
 		return (v->type == VEH_TRAIN && _settings_client.gui.show_train_weight_ratios_in_details);
 	}
 
+	bool ShouldShowSlotsLine(const Vehicle *v) const
+	{
+		if (v->type != VEH_TRAIN) return false;
+		return HasBit(Train::From(v)->flags, VRF_HAVE_SLOT);
+	}
+
 	virtual void UpdateWidgetSize(int widget, Dimension *size, const Dimension &padding, Dimension *fill, Dimension *resize)
 	{
 		switch (widget) {
@@ -2156,9 +2325,11 @@ struct VehicleDetailsWindow : Window {
 				Dimension dim = { 0, 0 };
 				this->vehicle_group_line_shown = ShouldShowGroupLine(v);
 				this->vehicle_weight_ratio_line_shown = ShouldShowWeightRatioLine(v);
+				this->vehicle_slots_line_shown = ShouldShowSlotsLine(v);
 				int lines = 4;
 				if (this->vehicle_group_line_shown) lines++;
 				if (this->vehicle_weight_ratio_line_shown) lines++;
+				if (this->vehicle_slots_line_shown) lines++;
 				size->height = WD_FRAMERECT_TOP + lines * FONT_HEIGHT_NORMAL + WD_FRAMERECT_BOTTOM;
 
 				for (uint i = 0; i < 5; i++) SetDParamMaxValue(i, INT16_MAX);
@@ -2316,9 +2487,14 @@ struct VehicleDetailsWindow : Window {
 					}
 				} else {
 					SetDParam(0, v->GetDisplayMaxSpeed());
-					if (v->type == VEH_AIRCRAFT && Aircraft::From(v)->GetRange() > 0) {
-						SetDParam(1, Aircraft::From(v)->GetRange());
-						string = STR_VEHICLE_INFO_MAX_SPEED_RANGE;
+					if (v->type == VEH_AIRCRAFT) {
+						SetDParam(1, v->GetEngine()->GetAircraftTypeText());
+						if (Aircraft::From(v)->GetRange() > 0) {
+							SetDParam(2, Aircraft::From(v)->GetRange());
+							string = STR_VEHICLE_INFO_MAX_SPEED_TYPE_RANGE;
+						} else {
+							string = STR_VEHICLE_INFO_MAX_SPEED_TYPE;
+						}
 					} else {
 						string = STR_VEHICLE_INFO_MAX_SPEED;
 					}
@@ -2381,8 +2557,32 @@ struct VehicleDetailsWindow : Window {
 				if (should_show_group) {
 					SetDParam(0, v->group_id);
 					DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, STR_VEHICLE_INFO_GROUP);
+					y += FONT_HEIGHT_NORMAL;
 				}
-				if (this->vehicle_group_line_shown != should_show_group || this->vehicle_weight_ratio_line_shown != should_show_weight_ratio) {
+
+				bool should_show_slots = this->ShouldShowSlotsLine(v);
+				if (should_show_slots) {
+					std::vector<TraceRestrictSlotID> slots;
+					TraceRestrictGetVehicleSlots(v->index, slots);
+
+					char text_buffer[512];
+					char *buffer = text_buffer;
+					const char * const last = lastof(text_buffer);
+					SetDParam(0, slots.size());
+					buffer = GetString(buffer, STR_TRACE_RESTRICT_SLOT_LIST_HEADER, last);
+
+					for (size_t i = 0; i < slots.size(); i++) {
+						if (i != 0) buffer = GetString(buffer, STR_TRACE_RESTRICT_SLOT_LIST_SEPARATOR, last);
+						buffer = strecpy(buffer, TraceRestrictSlot::Get(slots[i])->name.c_str(), last);
+					}
+					SetDParamStr(0, text_buffer);
+					DrawString(r.left + WD_FRAMERECT_LEFT, r.right - WD_FRAMERECT_RIGHT, y, STR_JUST_RAW_STRING);
+					y += FONT_HEIGHT_NORMAL;
+				}
+
+				if (this->vehicle_weight_ratio_line_shown != should_show_weight_ratio ||
+						this->vehicle_weight_ratio_line_shown != should_show_weight_ratio ||
+						this->vehicle_slots_line_shown != should_show_slots) {
 					const_cast<VehicleDetailsWindow *>(this)->ReInit();
 				}
 				break;
@@ -2779,6 +2979,7 @@ private:
 public:
 	VehicleViewWindow(WindowDesc *desc, WindowNumber window_number) : Window(desc)
 	{
+		this->flags |= WF_DISABLE_VP_SCROLL;
 		this->CreateNestedTree();
 
 		/* Sprites for the 'send to depot' button indexed by vehicle type. */
@@ -2965,11 +3166,18 @@ public:
 					SetDParam(0, v->GetDisplaySpeed());
 					str = STR_VEHICLE_STATUS_TRAIN_STOPPING_VEL;
 				}
-			} else { // no train
+			} else if (v->type == VEH_ROAD) {
+				if (RoadVehicle::From(v)->IsRoadVehicleStopped()) {
+					str = STR_VEHICLE_STATUS_STOPPED;
+				} else {
+					SetDParam(0, v->GetDisplaySpeed());
+					str = STR_VEHICLE_STATUS_TRAIN_STOPPING_VEL;
+				}
+			} else { // no train/RV
 				str = STR_VEHICLE_STATUS_STOPPED;
 			}
 		} else if (v->type == VEH_TRAIN && HasBit(Train::From(v)->flags, VRF_TRAIN_STUCK) && !v->current_order.IsType(OT_LOADING)) {
-			str = STR_VEHICLE_STATUS_TRAIN_STUCK;
+			str = HasBit(Train::From(v)->flags, VRF_WAITING_RESTRICTION) ? STR_VEHICLE_STATUS_TRAIN_STUCK_WAIT_RESTRICTION : STR_VEHICLE_STATUS_TRAIN_STUCK;
 		} else if (v->type == VEH_AIRCRAFT && HasBit(Aircraft::From(v)->flags, VAF_DEST_TOO_FAR) && !v->current_order.IsType(OT_LOADING)) {
 			str = STR_VEHICLE_STATUS_AIRCRAFT_TOO_FAR;
 		} else { // vehicle is in a "normal" state, show current order
@@ -3018,8 +3226,7 @@ public:
 						str = STR_VEHICLE_STATUS_LEAVING;
 						break;
 					}
-					/* FALL THROUGH, if aircraft. Does this even happen? */
-
+					FALLTHROUGH;
 				default:
 					if (v->GetNumManualOrders() == 0) {
 						str = STR_VEHICLE_STATUS_NO_ORDERS_VEL;

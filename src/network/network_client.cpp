@@ -421,7 +421,7 @@ NetworkRecvStatus ClientNetworkGameSocketHandler::SendCommand(const CommandPacke
 }
 
 /** Send a chat-packet over the network */
-NetworkRecvStatus ClientNetworkGameSocketHandler::SendChat(NetworkAction action, DestType type, int dest, const char *msg, int64 data)
+NetworkRecvStatus ClientNetworkGameSocketHandler::SendChat(NetworkAction action, DestType type, int dest, const char *msg, NetworkTextMessageData data)
 {
 	Packet *p = new Packet(PACKET_CLIENT_CHAT);
 
@@ -429,7 +429,7 @@ NetworkRecvStatus ClientNetworkGameSocketHandler::SendChat(NetworkAction action,
 	p->Send_uint8 (type);
 	p->Send_uint32(dest);
 	p->Send_string(msg);
-	p->Send_uint64(data);
+	data.send(p);
 
 	my_client->SendPacket(p);
 	return NETWORK_RECV_STATUS_OKAY;
@@ -953,7 +953,8 @@ NetworkRecvStatus ClientNetworkGameSocketHandler::Receive_SERVER_CHAT(Packet *p)
 	ClientID client_id = (ClientID)p->Recv_uint32();
 	bool self_send = p->Recv_bool();
 	p->Recv_string(msg, NETWORK_CHAT_LENGTH);
-	int64 data = p->Recv_uint64();
+	NetworkTextMessageData data;
+	data.recv(p);
 
 	ci_to = NetworkClientInfo::GetByClientID(client_id);
 	if (ci_to == NULL) return NETWORK_RECV_STATUS_OKAY;
@@ -970,7 +971,8 @@ NetworkRecvStatus ClientNetworkGameSocketHandler::Receive_SERVER_CHAT(Packet *p)
 			/* For speaking to company or giving money, we need the company-name */
 			case NETWORK_ACTION_GIVE_MONEY:
 				if (!Company::IsValidID(ci_to->client_playas)) return NETWORK_RECV_STATUS_OKAY;
-				/* FALL THROUGH */
+				FALLTHROUGH;
+
 			case NETWORK_ACTION_CHAT_COMPANY: {
 				StringID str = Company::IsValidID(ci_to->client_playas) ? STR_COMPANY_NAME : STR_NETWORK_SPECTATORS;
 				SetDParam(0, ci_to->client_playas);
@@ -1253,7 +1255,7 @@ void NetworkUpdateClientName()
  * @param msg The actual message.
  * @param data Arbitrary extra data.
  */
-void NetworkClientSendChat(NetworkAction action, DestType type, int dest, const char *msg, int64 data)
+void NetworkClientSendChat(NetworkAction action, DestType type, int dest, const char *msg, NetworkTextMessageData data)
 {
 	MyClient::SendChat(action, type, dest, msg, data);
 }

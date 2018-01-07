@@ -19,10 +19,12 @@
 
 typedef uint16 StationID;
 typedef uint16 RoadStopID;
+typedef uint16 DockID;
 
 struct BaseStation;
 struct Station;
 struct RoadStop;
+struct Dock;
 struct StationSpec;
 struct Waypoint;
 
@@ -89,7 +91,7 @@ enum CatchmentArea {
 	MAX_CATCHMENT      = 10, ///< Maximum catchment for airports with "modified catchment" enabled
 };
 
-static const uint MAX_LENGTH_STATION_NAME_CHARS = 32; ///< The maximum length of a station name in characters including '\0'
+static const uint MAX_LENGTH_STATION_NAME_CHARS = 128; ///< The maximum length of a station name in characters including '\0'
 
 /** List of station IDs */
 typedef std::list<StationID> StationIDList;

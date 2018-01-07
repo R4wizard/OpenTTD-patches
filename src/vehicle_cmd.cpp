@@ -177,6 +177,14 @@ CommandCost CmdBuildVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, uint
 				}
 			}
 		}
+		/* Since we can't estimate the cost of build and refitting a vehicle accurately we must
+		 * check whether the company has enough money manually. */
+		if (!CheckCompanyHasMoney(value)) {
+			if (flags & DC_EXEC) {
+				/* The vehicle has already been bought, so now it must be sold again. */
+				DoCommand(tile, v->index, 0, flags, GetCmdSellVeh(type));
+			}
+		}
 	}
 
 	return value;
@@ -635,7 +643,11 @@ CommandCost CmdStartStopVehicle(TileIndex tile, DoCommandFlag flags, uint32 p1, 
 		if (HasBit(v->vehicle_flags, VF_TIMETABLE_SEPARATION)) ClrBit(v->vehicle_flags, VF_TIMETABLE_STARTED);
 
 		v->vehstatus ^= VS_STOPPED;
-		if (v->type != VEH_TRAIN) v->cur_speed = 0; // trains can stop 'slowly'
+		if (v->type == VEH_ROAD) {
+			if (!RoadVehicle::From(v)->IsRoadVehicleOnLevelCrossing()) v->cur_speed = 0;
+		} else if (v->type != VEH_TRAIN) {
+			v->cur_speed = 0; // trains can stop 'slowly'
+		}
 		v->MarkDirty();
 		SetWindowWidgetDirty(WC_VEHICLE_VIEW, v->index, WID_VV_START_STOP);
 		SetWindowDirty(WC_VEHICLE_DEPOT, v->tile);

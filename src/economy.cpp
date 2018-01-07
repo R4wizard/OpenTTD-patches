@@ -407,7 +407,7 @@ void ChangeOwnershipOfCompanyItems(Owner old_owner, Owner new_owner)
 			if (v->owner == old_owner && IsCompanyBuildableVehicleType(v->type)) {
 				if (new_owner == INVALID_OWNER) {
 					if (v->Previous() == NULL) {
-						if (_settings_game.economy.infrastructure_sharing[VEH_TRAIN] && v->type == VEH_TRAIN && Train::From(v)->IsFrontEngine()) {
+						if (_settings_game.economy.infrastructure_sharing[VEH_TRAIN] && v->type == VEH_TRAIN && Train::From(v)->IsFrontEngine() && !Train::From(v)->IsVirtual()) {
 							DeleteVisibleTrain(Train::From(v));
 						} else {
 							delete v;
@@ -1242,11 +1242,13 @@ void CargoPayment::PayFinalDelivery(const CargoPacket *cp, uint count)
 	/* Handle end of route payment */
 	Money profit = DeliverGoods(count, this->ct, this->current_station, cp->SourceStationXY(), cp->DaysInTransit(), this->owner, cp->SourceSubsidyType(), cp->SourceSubsidyID());
 
+	profit -= cp->FeederShare(count);
+
 	/* For Infrastructure patch. Handling transfers between other companies */
-	this->route_profit += profit - cp->FeederShare(count);
+	this->route_profit += profit;
 
 	/* The vehicle's profit is whatever route profit there is minus feeder shares. */
-	this->visual_profit += profit - cp->FeederShare(count);
+	this->visual_profit += profit;
 }
 
 /**
@@ -1260,9 +1262,11 @@ Money CargoPayment::PayTransfer(const CargoPacket *cp, uint count)
 	Money profit = GetTransportedGoodsIncome(
 			count,
 			/* pay transfer vehicle for only the part of transfer it has done: ie. cargo_loaded_at_xy to here */
-			DistanceManhattan(cp->LoadedAtXY(), Station::Get(this->current_station)->xy),
+			DistanceManhattan(_settings_game.economy.feeder_payment_src_station ? cp->SourceStationXY() : cp->LoadedAtXY(), Station::Get(this->current_station)->xy),
 			cp->DaysInTransit(),
 			this->ct);
+
+	if (_settings_game.economy.feeder_payment_src_station) profit -= cp->FeederShare(count);
 
 	profit = profit * _settings_game.economy.feeder_payment_share / 100;
 
@@ -1719,13 +1723,11 @@ static void LoadUnloadVehicle(Vehicle *front)
 		if (v->cargo_cap == 0) continue;
 		artic_part++;
 
-		uint load_amount = GetLoadAmount(v);
-
 		GoodsEntry *ge = &st->goods[v->cargo_type];
 
 		if (HasBit(v->vehicle_flags, VF_CARGO_UNLOADING) && (GetUnloadType(v) & OUFB_NO_UNLOAD) == 0) {
 			uint cargo_count = v->cargo.UnloadCount();
-			uint amount_unloaded = _settings_game.order.gradual_loading ? min(cargo_count, load_amount) : cargo_count;
+			uint amount_unloaded = _settings_game.order.gradual_loading ? min(cargo_count, GetLoadAmount(v)) : cargo_count;
 			bool remaining = false; // Are there cargo entities in this vehicle that can still be unloaded here?
 
 			assert(payment != NULL);
@@ -1804,7 +1806,7 @@ static void LoadUnloadVehicle(Vehicle *front)
 		/* update stats */
 		int t;
 		switch (front->type) {
-			case VEH_TRAIN: /* FALL THROUGH */
+			case VEH_TRAIN:
 			case VEH_SHIP:
 				t = front->vcache.cached_max_speed;
 				break;
@@ -1830,8 +1832,8 @@ static void LoadUnloadVehicle(Vehicle *front)
 		 * has capacity for it, load it on the vehicle. */
 		uint cap_left = v->cargo_cap - v->cargo.StoredCount();
 		if (cap_left > 0 && (v->cargo.ActionCount(VehicleCargoList::MTA_LOAD) > 0 || ge->cargo.AvailableCount() > 0)) {
-			if (_settings_game.order.gradual_loading) cap_left = min(cap_left, load_amount);
 			if (v->cargo.StoredCount() == 0) TriggerVehicle(v, VEHICLE_TRIGGER_NEW_CARGO);
+			if (_settings_game.order.gradual_loading) cap_left = min(cap_left, GetLoadAmount(v));
 
 			uint loaded = ge->cargo.Load(cap_left, &v->cargo, st->xy, next_station.Get(v->cargo_type));
 			if (v->cargo.ActionCount(VehicleCargoList::MTA_LOAD) > 0) {

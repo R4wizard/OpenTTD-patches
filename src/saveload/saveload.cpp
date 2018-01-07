@@ -24,6 +24,7 @@
 #include "../stdafx.h"
 #include "../debug.h"
 #include "../station_base.h"
+#include "../dock_base.h"
 #include "../thread/thread.h"
 #include "../town.h"
 #include "../network/network.h"
@@ -41,6 +42,7 @@
 #include "../fileio_func.h"
 #include "../gamelog.h"
 #include "../string_func.h"
+#include "../string_func_extra.h"
 #include "../fios.h"
 #include "../error.h"
 
@@ -269,8 +271,9 @@
  *  193   26802
  *  194   26881   1.5.x, 1.6.0
  *  195   27572   1.6.x
+ *  196   27778   1.7.x
  */
-extern const uint16 SAVEGAME_VERSION = 195; ///< Current savegame version of OpenTTD.
+extern const uint16 SAVEGAME_VERSION = 196; ///< Current savegame version of OpenTTD.
 const uint16 SAVEGAME_VERSION_EXT = 0x8000; ///< Savegame extension indicator mask
 
 SavegameType _savegame_type; ///< type of savegame we are loading
@@ -465,6 +468,7 @@ extern const ChunkHandler _plan_chunk_handlers[];
 extern const ChunkHandler _template_replacement_chunk_handlers[];
 extern const ChunkHandler _template_vehicle_chunk_handlers[];
 extern const ChunkHandler _bridge_signal_chunk_handlers[];
+extern const ChunkHandler _tunnel_chunk_handlers[];
 
 /** Array of all chunks in a savegame, \c NULL terminated. */
 static const ChunkHandler * const _chunk_handlers[] = {
@@ -508,6 +512,7 @@ static const ChunkHandler * const _chunk_handlers[] = {
 	_template_replacement_chunk_handlers,
 	_template_vehicle_chunk_handlers,
 	_bridge_signal_chunk_handlers,
+	_tunnel_chunk_handlers,
 	NULL,
 };
 
@@ -1092,6 +1097,18 @@ static inline size_t SlCalcNetStringLen(const char *ptr, size_t length)
 }
 
 /**
+ * Calculate the gross length of the std::string that it
+ * will occupy in the savegame. This includes the real length,
+ * and the length that the index will occupy.
+ * @param str reference to the std::string
+ * @return return the gross length of the string
+ */
+static inline size_t SlCalcStdStrLen(const std::string &str)
+{
+	return str.size() + SlGetArrayLength(str.size()); // also include the length of the index
+}
+
+/**
  * Calculate the gross length of the string that it
  * will occupy in the savegame. This includes the real length, returned
  * by SlCalcNetStringLen and the length that the index will occupy.
@@ -1203,6 +1220,41 @@ static void SlString(void *ptr, size_t length, VarType conv)
 }
 
 /**
+ * Save/Load a std::string.
+ * @param ptr the std::string being manipulated
+ * @param conv must be SLE_FILE_STRING
+ */
+static void SlStdString(std::string &str, VarType conv)
+{
+	switch (_sl.action) {
+		case SLA_SAVE: {
+			SlWriteArrayLength(str.size());
+			SlCopyBytes(const_cast<char *>(str.data()), str.size());
+			break;
+		}
+		case SLA_LOAD_CHECK:
+		case SLA_LOAD: {
+			size_t len = SlReadArrayLength();
+			str.resize(len);
+			SlCopyBytes(const_cast<char *>(str.c_str()), len);
+
+			StringValidationSettings settings = SVS_REPLACE_WITH_QUESTION_MARK;
+			if ((conv & SLF_ALLOW_CONTROL) != 0) {
+				settings = settings | SVS_ALLOW_CONTROL_CODE;
+			}
+			if ((conv & SLF_ALLOW_NEWLINE) != 0) {
+				settings = settings | SVS_ALLOW_NEWLINE;
+			}
+			str_validate(str, settings);
+			break;
+		}
+		case SLA_PTRS: break;
+		case SLA_NULL: break;
+		default: NOT_REACHED();
+	}
+}
+
+/**
  * Return the size in bytes of a certain type of atomic array
  * @param length The length of the array counted in elements
  * @param conv VarType type of the variable that is used in calculating the size
@@ -1293,6 +1345,7 @@ static size_t ReferenceToInt(const void *obj, SLRefType rt)
 		case REF_STORAGE:        return ((const PersistentStorage*)obj)->index + 1;
 		case REF_LINK_GRAPH:     return ((const         LinkGraph*)obj)->index + 1;
 		case REF_LINK_GRAPH_JOB: return ((const      LinkGraphJob*)obj)->index + 1;
+		case REF_DOCKS:          return ((const              Dock*)obj)->index + 1;
 		default: NOT_REACHED();
 	}
 }
@@ -1358,6 +1411,10 @@ static void *IntToReference(size_t index, SLRefType rt)
 			if (RoadStop::IsValidID(index)) return RoadStop::Get(index);
 			SlErrorCorrupt("Referencing invalid RoadStop");
 
+		case REF_DOCKS:
+			if (Dock::IsValidID(index)) return Dock::Get(index);
+			SlErrorCorrupt("Referencing invalid Dock");
+
 		case REF_ENGINE_RENEWS:
 			if (EngineRenew::IsValidID(index)) return EngineRenew::Get(index);
 			SlErrorCorrupt("Referencing invalid EngineRenew");
@@ -1397,6 +1454,18 @@ static inline size_t SlCalcListLen(const void *list)
 	return l->size() * type_size + type_size;
 }
 
+/**
+ * Return the size in bytes of a list
+ * @param list The std::list to find the size of
+ */
+ template<typename PtrList>
+static inline size_t SlCalcVarListLen(const void *list, size_t item_size)
+{
+	const PtrList *l = (const PtrList *) list;
+	/* Each entry is saved as item_size bytes, plus 4 bytes are used for the length
+	 * of the list */
+	return l->size() * item_size + 4;
+}
 
 /**
  * Save/Load a list.
@@ -1455,6 +1524,55 @@ static void SlList(void *list, SLRefType conv)
 	}
 }
 
+/**
+ * Save/Load a list.
+ * @param list The list being manipulated
+ * @param conv VarType type of the list
+ */
+template<typename PtrList>
+static void SlVarList(void *list, VarType conv)
+{
+	const size_t size_len = SlCalcConvMemLen(conv);
+	/* Automatically calculate the length? */
+	if (_sl.need_length != NL_NONE) {
+		SlSetLength(SlCalcVarListLen<PtrList>(list, size_len));
+		/* Determine length only? */
+		if (_sl.need_length == NL_CALCLENGTH) return;
+	}
+
+	PtrList *l = (PtrList *)list;
+
+	switch (_sl.action) {
+		case SLA_SAVE: {
+			SlWriteUint32((uint32)l->size());
+
+			typename PtrList::iterator iter;
+			for (iter = l->begin(); iter != l->end(); ++iter) {
+				SlSaveLoadConv(&(*iter), conv);
+			}
+			break;
+		}
+		case SLA_LOAD_CHECK:
+		case SLA_LOAD: {
+			size_t length = SlReadUint32();
+			l->resize(length);
+
+			typename PtrList::iterator iter;
+			iter = l->begin();
+
+			for (size_t i = 0; i < length; i++) {
+				SlSaveLoadConv(&(*iter), conv);
+				++iter;
+			}
+			break;
+		}
+		case SLA_PTRS: break;
+		case SLA_NULL:
+			l->clear();
+			break;
+		default: NOT_REACHED();
+	}
+}
 
 /** Are we going to save this object or not? */
 static inline bool SlIsObjectValidInSavegame(const SaveLoad *sld)
@@ -1509,6 +1627,8 @@ size_t SlCalcObjMemberLength(const void *object, const SaveLoad *sld)
 		case SL_LST:
 		case SL_DEQ:
 		case SL_VEC:
+		case SL_STDSTR:
+		case SL_VARVEC:
 			/* CONDITIONAL saveload types depend on the savegame version */
 			if (!SlIsObjectValidInSavegame(sld)) break;
 
@@ -1520,6 +1640,17 @@ size_t SlCalcObjMemberLength(const void *object, const SaveLoad *sld)
 				case SL_LST: return SlCalcListLen<std::list<void *>>(GetVariableAddress(object, sld));
 				case SL_DEQ: return SlCalcListLen<std::deque<void *>>(GetVariableAddress(object, sld));
 				case SL_VEC: return SlCalcListLen<std::vector<void *>>(GetVariableAddress(object, sld));
+				case SL_VARVEC: {
+					const size_t size_len = SlCalcConvMemLen(sld->conv);
+					switch (size_len) {
+						case 1: return SlCalcVarListLen<std::vector<byte>>(GetVariableAddress(object, sld), 1);
+						case 2: return SlCalcVarListLen<std::vector<uint16>>(GetVariableAddress(object, sld), 2);
+						case 4: return SlCalcVarListLen<std::vector<uint32>>(GetVariableAddress(object, sld), 4);
+						case 8: return SlCalcVarListLen<std::vector<uint64>>(GetVariableAddress(object, sld), 8);
+						default: NOT_REACHED();
+					}
+				}
+				case SL_STDSTR: return SlCalcStdStrLen(*static_cast<std::string *>(GetVariableAddress(object, sld)));
 				default: NOT_REACHED();
 			}
 			break;
@@ -1568,6 +1699,9 @@ static bool IsVariableSizeRight(const SaveLoad *sld)
 			/* These should be pointer sized, or fixed array. */
 			return sld->size == sizeof(void *) || sld->size == sld->length;
 
+		case SL_STDSTR:
+			return sld->size == sizeof(std::string);
+
 		default:
 			return true;
 	}
@@ -1590,6 +1724,8 @@ bool SlObjectMember(void *ptr, const SaveLoad *sld)
 		case SL_LST:
 		case SL_DEQ:
 		case SL_VEC:
+		case SL_STDSTR:
+		case SL_VARVEC:
 			/* CONDITIONAL saveload types depend on the savegame version */
 			if (!SlIsObjectValidInSavegame(sld)) return false;
 			if (SlSkipVariableOnLoad(sld)) return false;
@@ -1619,6 +1755,18 @@ bool SlObjectMember(void *ptr, const SaveLoad *sld)
 				case SL_LST: SlList<std::list<void *>>(ptr, (SLRefType)conv); break;
 				case SL_DEQ: SlList<std::deque<void *>>(ptr, (SLRefType)conv); break;
 				case SL_VEC: SlList<std::vector<void *>>(ptr, (SLRefType)conv); break;
+				case SL_VARVEC: {
+					const size_t size_len = SlCalcConvMemLen(sld->conv);
+					switch (size_len) {
+						case 1: SlVarList<std::vector<byte>>(ptr, conv); break;
+						case 2: SlVarList<std::vector<uint16>>(ptr, conv); break;
+						case 4: SlVarList<std::vector<uint32>>(ptr, conv); break;
+						case 8: SlVarList<std::vector<uint64>>(ptr, conv); break;
+						default: NOT_REACHED();
+					}
+					break;
+				}
+				case SL_STDSTR: SlStdString(*static_cast<std::string *>(ptr), sld->conv); break;
 				default: NOT_REACHED();
 			}
 			break;
@@ -2081,7 +2229,7 @@ struct LZOLoadFilter : LoadFilter {
 		byte out[LZO_BUFFER_SIZE + LZO_BUFFER_SIZE / 16 + 64 + 3 + sizeof(uint32) * 2];
 		uint32 tmp[2];
 		uint32 size;
-		lzo_uint len;
+		lzo_uint len = ssize;
 
 		/* Read header*/
 		if (this->chain->Read((byte*)tmp, sizeof(tmp)) != sizeof(tmp)) SlError(STR_GAME_SAVELOAD_ERROR_FILE_NOT_READABLE, "File read failed");
@@ -2103,7 +2251,8 @@ struct LZOLoadFilter : LoadFilter {
 		if (tmp[0] != lzo_adler32(0, out, size + sizeof(uint32))) SlErrorCorrupt("Bad checksum");
 
 		/* Decompress */
-		lzo1x_decompress_safe(out + sizeof(uint32) * 1, size, buf, &len, NULL);
+		int ret = lzo1x_decompress_safe(out + sizeof(uint32) * 1, size, buf, &len, NULL);
+		if (ret != LZO_E_OK) SlError(STR_GAME_SAVELOAD_ERROR_FILE_NOT_READABLE);
 		return len;
 	}
 };

@@ -13,14 +13,15 @@
 #define LINKGRAPHJOB_H
 
 #include "../thread/thread.h"
+#include "../core/dyn_arena_alloc.hpp"
 #include "linkgraph.h"
-#include <list>
+#include <vector>
 #include <memory>
 
 class LinkGraphJob;
 class Path;
 class LinkGraphJobGroup;
-typedef std::list<Path *> PathList;
+typedef std::vector<Path *> PathList;
 
 /** Type of the pool for link graph jobs. */
 typedef Pool<LinkGraphJob, LinkGraphJobID, 32, 0xFFFF> LinkGraphJobPool;
@@ -52,7 +53,7 @@ private:
 		void Init(uint supply);
 	};
 
-	typedef SmallVector<NodeAnnotation, 16> NodeAnnotationVector;
+	typedef std::vector<NodeAnnotation> NodeAnnotationVector;
 	typedef SmallMatrix<EdgeAnnotation> EdgeAnnotationMatrix;
 
 	friend const SaveLoad *GetLinkGraphJobDesc();
@@ -74,9 +75,12 @@ protected:
 	void EraseFlows(NodeID from);
 	void JoinThread();
 	void SetJobGroup(std::shared_ptr<LinkGraphJobGroup> group);
-	bool IsJobAborted() const;
 
 public:
+
+	DynUniformArenaAllocator path_allocator; ///< Arena allocator used for paths
+
+	bool IsJobAborted() const;
 
 	/**
 	 * A job edge. Wraps a link graph edge and an edge annotation. The

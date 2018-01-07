@@ -1179,7 +1179,7 @@ struct NetworkStartServerWindow : public Window {
 			}
 
 			case WID_NSS_GENERATE_GAME: // Start game
-				if ((uint) CountSelectedGRFs (_grfconfig_newgame) > NETWORK_MAX_GRF_COUNT) {
+				if (CountSelectedGRFs(_grfconfig_newgame) > NETWORK_MAX_GRF_COUNT) {
 					ShowErrorMessage(STR_NEWGRF_ERROR_TOO_MANY_NEWGRFS_LOADED, INVALID_STRING_ID, WL_ERROR);
 					break;
 				}
@@ -1664,8 +1664,7 @@ NetworkCompanyInfo *GetLobbyCompanyInfo(CompanyID company)
 }
 
 /* The window below gives information about the connected clients
- *  and also makes able to give money to them, kick them (if server)
- *  and stuff like that. */
+ * and also makes able to kick them (if server) and stuff like that. */
 
 extern void DrawCompanyIcon(CompanyID cid, int x, int y);
 
@@ -1695,11 +1694,6 @@ static void ClientList_Kick(const NetworkClientInfo *ci)
 static void ClientList_Ban(const NetworkClientInfo *ci)
 {
 	NetworkServerKickOrBanIP(ci->client_id, true);
-}
-
-static void ClientList_GiveMoney(const NetworkClientInfo *ci)
-{
-	ShowNetworkGiveMoneyWindow(ci->client_playas);
 }
 
 static void ClientList_SpeakToClient(const NetworkClientInfo *ci)
@@ -1759,13 +1753,6 @@ struct NetworkClientListPopupWindow : Window {
 			this->AddAction(STR_NETWORK_CLIENTLIST_SPEAK_TO_COMPANY, &ClientList_SpeakToCompany);
 		}
 		this->AddAction(STR_NETWORK_CLIENTLIST_SPEAK_TO_ALL, &ClientList_SpeakToAll);
-
-		if (_network_own_client_id != ci->client_id) {
-			/* We are no spectator and the company we want to give money to is no spectator and money gifts are allowed. */
-			if (Company::IsValidID(_local_company) && Company::IsValidID(ci->client_playas) && _settings_game.economy.give_money) {
-				this->AddAction(STR_NETWORK_CLIENTLIST_GIVE_MONEY, &ClientList_GiveMoney);
-			}
-		}
 
 		/* A server can kick clients (but not himself). */
 		if (_network_server && _network_own_client_id != ci->client_id) {
@@ -2059,7 +2046,8 @@ struct NetworkJoinStatusWindow : Window {
 					progress = 15; // We don't have the final size yet; the server is still compressing!
 					break;
 				}
-				/* FALL THROUGH */
+				FALLTHROUGH;
+
 			default: // Waiting is 15%, so the resting receivement of map is maximum 70%
 				progress = 15 + _network_join_bytes * (100 - 15) / _network_join_bytes_total;
 		}
@@ -2188,7 +2176,7 @@ struct NetworkCompanyPasswordWindow : public Window {
 		switch (widget) {
 			case WID_NCP_OK:
 				this->OnOk();
-				/* FALL THROUGH */
+				FALLTHROUGH;
 
 			case WID_NCP_CANCEL:
 				delete this;

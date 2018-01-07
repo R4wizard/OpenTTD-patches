@@ -35,6 +35,7 @@
 #include "window_func.h"
 #include "debug.h"
 #include "unit_conversion.h"
+#include "tracerestrict.h"
 #include "game/game_text.hpp"
 #ifdef ENABLE_NETWORK
 #	include "network/network_content_gui.h"
@@ -188,21 +189,19 @@ struct LanguagePack : public LanguagePackHeader {
 
 static char **_langpack_offs;
 static LanguagePack *_langpack;
-static uint _langtab_num[TAB_COUNT];   ///< Offset into langpack offs
-static uint _langtab_start[TAB_COUNT]; ///< Offset into langpack offs
+static uint _langtab_num[TEXT_TAB_END];   ///< Offset into langpack offs
+static uint _langtab_start[TEXT_TAB_END]; ///< Offset into langpack offs
 static bool _scan_for_gender_data = false;  ///< Are we scanning for the gender of the current string? (instead of formatting it)
 
 
 const char *GetStringPtr(StringID string)
 {
-	switch (GB(string, TAB_COUNT_OFFSET, TAB_COUNT_BITS)) {
-		case GAME_TEXT_TAB: return GetGameStringPtr(GB(string, TAB_SIZE_OFFSET, TAB_SIZE_BITS));
+	switch (GetStringTab(string)) {
+		case TEXT_TAB_GAMESCRIPT_START: return GetGameStringPtr(GetStringIndex(string));
 		/* 0xD0xx and 0xD4xx IDs have been converted earlier. */
-		case 26: NOT_REACHED();
-		case 28: return GetGRFStringPtr(GB(string, TAB_SIZE_OFFSET, TAB_SIZE_BITS));
-		case 29: return GetGRFStringPtr(GB(string, TAB_SIZE_OFFSET, TAB_SIZE_BITS) + 0x0800);
-		case 30: return GetGRFStringPtr(GB(string, TAB_SIZE_OFFSET, TAB_SIZE_BITS) + 0x1000);
-		default: return _langpack_offs[_langtab_start[GB(string, TAB_COUNT_OFFSET, TAB_COUNT_BITS)] + GB(string, TAB_SIZE_OFFSET, TAB_SIZE_BITS)];
+		case TEXT_TAB_OLD_NEWGRF: NOT_REACHED();
+		case TEXT_TAB_NEWGRF_START: return GetGRFStringPtr(GetStringIndex(string));
+		default: return _langpack_offs[_langtab_start[GetStringTab(string)] + GetStringIndex(string)];
 	}
 }
 
@@ -220,43 +219,40 @@ char *GetStringWithArgs(char *buffr, StringID string, StringParameters *args, co
 {
 	if (string == 0) return GetStringWithArgs(buffr, STR_UNDEFINED, args, last);
 
-	uint index = GB(string, TAB_SIZE_OFFSET,  TAB_SIZE_BITS);
-	uint tab   = GB(string, TAB_COUNT_OFFSET, TAB_COUNT_BITS);
+	uint index = GetStringIndex(string);
+	StringTab tab = GetStringTab(string);
 
 	switch (tab) {
-		case 4:
+		case TEXT_TAB_TOWN:
 			if (index >= 0xC0 && !game_script) {
 				return GetSpecialTownNameString(buffr, index - 0xC0, args->GetInt32(), last);
 			}
 			break;
 
-		case 14:
+		case TEXT_TAB_SPECIAL:
 			if (index >= 0xE4 && !game_script) {
 				return GetSpecialNameString(buffr, index - 0xE4, args, last);
 			}
 			break;
 
-		case 15:
+		case TEXT_TAB_OLD_CUSTOM:
 			/* Old table for custom names. This is no longer used */
 			if (!game_script) {
 				error("Incorrect conversion of custom name string.");
 			}
 			break;
 
-		case GAME_TEXT_TAB:
+		case TEXT_TAB_GAMESCRIPT_START:
 			return FormatString(buffr, GetGameStringPtr(index), args, last, case_index, true);
 
-		case 26:
+		case TEXT_TAB_OLD_NEWGRF:
 			NOT_REACHED();
 
-		case 28:
+		case TEXT_TAB_NEWGRF_START:
 			return FormatString(buffr, GetGRFStringPtr(index), args, last, case_index);
 
-		case 29:
-			return FormatString(buffr, GetGRFStringPtr(index + 0x0800), args, last, case_index);
-
-		case 30:
-			return FormatString(buffr, GetGRFStringPtr(index + 0x1000), args, last, case_index);
+		default:
+			break;
 	}
 
 	if (index >= _langtab_num[tab]) {
@@ -417,12 +413,12 @@ static char *FormatBytes(char *buff, int64 number, const char *last)
 	return buff;
 }
 
-static char *FormatWallClockString(char *buff, DateTicks ticks, const char *last, bool show_date, uint case_index)
+static char *FormatWallClockString(char *buff, DateTicksScaled ticks, const char *last, bool show_date, uint case_index)
 {
 	Minutes minutes = ticks / _settings_client.gui.ticks_per_minute + _settings_client.gui.clock_offset;
 	char hour[3], minute[3];
-	seprintf(hour,   lastof(hour),   "%02i", MINUTES_HOUR(minutes)  );
-	seprintf(minute, lastof(minute), "%02i", MINUTES_MINUTE(minutes));
+	seprintf(hour,   lastof(hour),   "%02i", (int) MINUTES_HOUR(minutes)  );
+	seprintf(minute, lastof(minute), "%02i", (int) MINUTES_MINUTE(minutes));
 	if (show_date) {
 		int64 args[3] = { (int64)hour, (int64)minute, (int64)ticks / (DAY_TICKS * _settings_game.economy.day_length_factor) };
 		if (_settings_client.gui.date_with_time == 1) {
@@ -1010,17 +1006,16 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				sub_args.ClearTypeInformation();
 				memset(sub_args_need_free, 0, sizeof(sub_args_need_free));
 
-				uint16 stringid;
 				const char *s = str;
 				char *p;
-				stringid = strtol(str, &p, 16);
+				uint32 stringid = strtoul(str, &p, 16);
 				if (*p != ':' && *p != '\0') {
 					while (*p != '\0') p++;
 					str = p;
 					buff = strecat(buff, "(invalid SCC_ENCODED)", last);
 					break;
 				}
-				if (stringid >= TAB_SIZE) {
+				if (stringid >= TAB_SIZE_GAMESCRIPT) {
 					while (*p != '\0') p++;
 					str = p;
 					buff = strecat(buff, "(invalid StringID)", last);
@@ -1068,13 +1063,13 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 						param = strtoull(s, &p, 16);
 
 						if (lookup) {
-							if (param >= TAB_SIZE) {
+							if (param >= TAB_SIZE_GAMESCRIPT) {
 								while (*p != '\0') p++;
 								str = p;
 								buff = strecat(buff, "(invalid sub-StringID)", last);
 								break;
 							}
-							param = (GAME_TEXT_TAB << TAB_COUNT_OFFSET) + param;
+							param = MakeStringID(TEXT_TAB_GAMESCRIPT_START, param);
 						}
 
 						sub_args.SetParam(i++, param);
@@ -1089,7 +1084,7 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				/* If we didn't error out, we can actually print the string. */
 				if (*str != '\0') {
 					str = p;
-					buff = GetStringWithArgs(buff, (GAME_TEXT_TAB << TAB_COUNT_OFFSET) + stringid, &sub_args, last, true);
+					buff = GetStringWithArgs(buff, MakeStringID(TEXT_TAB_GAMESCRIPT_START, stringid), &sub_args, last, true);
 				}
 
 				for (int i = 0; i < 20; i++) {
@@ -1205,7 +1200,7 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 
 			case SCC_STRING: {// {STRING}
 				StringID str = args->GetInt32(SCC_STRING);
-				if (game_script && GB(str, TAB_COUNT_OFFSET, TAB_COUNT_BITS) != GAME_TEXT_TAB) break;
+				if (game_script && GetStringTab(str) != TEXT_TAB_GAMESCRIPT_START) break;
 				/* WARNING. It's prohibited for the included string to consume any arguments.
 				 * For included strings that consume argument, you should use STRING1, STRING2 etc.
 				 * To debug stuff you can set argv to NULL and it will tell you */
@@ -1224,7 +1219,7 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 			case SCC_STRING7: { // {STRING1..7}
 				/* Strings that consume arguments */
 				StringID str = args->GetInt32(b);
-				if (game_script && GB(str, TAB_COUNT_OFFSET, TAB_COUNT_BITS) != GAME_TEXT_TAB) break;
+				if (game_script && GetStringTab(str) != TEXT_TAB_GAMESCRIPT_START) break;
 				uint size = b - SCC_STRING1 + 1;
 				if (game_script && size > args->GetDataLeft()) {
 					buff = strecat(buff, "(too many parameters)", last);
@@ -1748,10 +1743,23 @@ static char *FormatString(char *buff, const char *str_arg, StringParameters *arg
 				break;
 			}
 
+			case SCC_TR_SLOT_NAME: { // {TRSLOT}
+				const TraceRestrictSlot *slot = TraceRestrictSlot::GetIfValid(args->GetInt32(SCC_TR_SLOT_NAME));
+				if (slot == NULL) break;
+				int64 args_array[] = {(int64)(size_t)slot->name.c_str()};
+				StringParameters tmp_params(args_array);
+				buff = GetStringWithArgs(buff, STR_JUST_RAW_STRING, &tmp_params, last);
+				break;
+			}
+
 			case SCC_STATION_FEATURES: { // {STATIONFEATURES}
 				buff = StationGetSpecialString(buff, args->GetInt32(SCC_STATION_FEATURES), last);
 				break;
 			}
+
+			case SCC_CONSUME_ARG:
+				// do nothing
+				break;
 
 			default:
 				if (buff + Utf8CharLen(b) < last) buff += Utf8Encode(buff, b);
@@ -1982,13 +1990,13 @@ bool ReadLanguagePack(const LanguageMetadata *lang)
 	}
 
 #if TTD_ENDIAN == TTD_BIG_ENDIAN
-	for (uint i = 0; i < TAB_COUNT; i++) {
+	for (uint i = 0; i < TEXT_TAB_END; i++) {
 		lang_pack->offsets[i] = ReadLE16Aligned(&lang_pack->offsets[i]);
 	}
 #endif /* TTD_ENDIAN == TTD_BIG_ENDIAN */
 
 	uint count = 0;
-	for (uint i = 0; i < TAB_COUNT; i++) {
+	for (uint i = 0; i < TEXT_TAB_END; i++) {
 		uint16 num = lang_pack->offsets[i];
 		if (num > TAB_SIZE) {
 			free(lang_pack);
@@ -2297,12 +2305,12 @@ class LanguagePackGlyphSearcher : public MissingGlyphSearcher {
 
 	/* virtual */ const char *NextString()
 	{
-		if (this->i >= TAB_COUNT) return NULL;
+		if (this->i >= TEXT_TAB_END) return NULL;
 
 		const char *ret = _langpack_offs[_langtab_start[this->i] + this->j];
 
 		this->j++;
-		while (this->i < TAB_COUNT && this->j >= _langtab_num[this->i]) {
+		while (this->i < TEXT_TAB_END && this->j >= _langtab_num[this->i]) {
 			this->i++;
 			this->j = 0;
 		}

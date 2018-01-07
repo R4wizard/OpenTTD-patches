@@ -1432,7 +1432,7 @@ STR_CONFIG_SETTING_TYPE_DROPDOWN_GAME_INGAME                    :Наладкі 
 STR_CONFIG_SETTING_TYPE_DROPDOWN_COMPANY_MENU                   :Наладкі кампаніі (запісваюцца ў захаваньні; уплываюць толькі на новыя гульні)
 STR_CONFIG_SETTING_TYPE_DROPDOWN_COMPANY_INGAME                 :Наладкі кампаніі (запісваюцца ў захаваньне; уплываюць толькі на бягучую кампанію)
 STR_CONFIG_SETTING_CATEGORY_HIDES                               :{BLACK}Паказаць усе вынікі пошуку па наладках{}{SILVER}Катэґорыя {BLACK}да {WHITE}{STRING}
-STR_CONFIG_SETTING_TYPE_HIDES                                   :{BLACK}Паказаць усе вынікі пошуку па наладках{}{SILVER}Тып BLACK}да {WHITE}Усе тыпы наладак
+STR_CONFIG_SETTING_TYPE_HIDES                                   :{BLACK}Паказаць усе вынікі пошуку па наладках{}{SILVER}Тып {BLACK}да {WHITE}Усе тыпы наладак
 STR_CONFIG_SETTING_CATEGORY_AND_TYPE_HIDES                      :{BLACK}Паказаць усе вынікі пошуку па наладках{}{SILVER}Катэґорыя {BLACK}да {WHITE}{STRING} {BLACK}і {SILVER}Тып {BLACK}да {WHITE}Усе тыпы наладак
 STR_CONFIG_SETTINGS_NONE                                        :{WHITE}- Няма -
 
@@ -2388,7 +2388,6 @@ STR_NETWORK_COMPANY_LIST_NEW_COMPANY                            :{WHITE}Нова
 # Network client list
 STR_NETWORK_CLIENTLIST_KICK                                     :Выкінуць гульца
 STR_NETWORK_CLIENTLIST_BAN                                      :Бан
-STR_NETWORK_CLIENTLIST_GIVE_MONEY                               :Передаць грошай
 STR_NETWORK_CLIENTLIST_SPEAK_TO_ALL                             :Пагутарыць з усімі
 STR_NETWORK_CLIENTLIST_SPEAK_TO_COMPANY                         :Пагутарыць з кампаніяй
 STR_NETWORK_CLIENTLIST_SPEAK_TO_CLIENT                          :Прыватнае паведамленьне
@@ -2397,7 +2396,6 @@ STR_NETWORK_SERVER                                              :Сэрвэр
 STR_NETWORK_CLIENT                                              :Кліент
 STR_NETWORK_SPECTATORS                                          :Назіральнікі
 
-STR_NETWORK_GIVE_MONEY_CAPTION                                  :{WHITE}Увядзіце суму грошай, якую вы хочаце перадаць
 STR_NETWORK_TOOLBAR_LIST_SPECTATOR                              :{BLACK}Назіральнік
 
 # Network set password
@@ -3020,7 +3018,7 @@ STR_LAI_OBJECT_DESCRIPTION_COMPANY_OWNED_LAND                   :Зямля на
 STR_ABOUT_OPENTTD                                               :{WHITE}Аб OpenTTD
 STR_ABOUT_ORIGINAL_COPYRIGHT                                    :{BLACK}Арыґінальныя аўтарскія правы {COPYRIGHT} 1995 Chris Sawyer. Усе правы абароненыя.
 STR_ABOUT_VERSION                                               :{BLACK}OpenTTD вэрсія {REV}
-STR_ABOUT_COPYRIGHT_OPENTTD                                     :{BLACK}OpenTTD {COPYRIGHT} 2002–2016 Каманда распрацоўнікаў OpenTTD
+STR_ABOUT_COPYRIGHT_OPENTTD                                     :{BLACK}OpenTTD {COPYRIGHT} 2002–2017 Каманда распрацоўнікаў OpenTTD
 
 # Save/load game/scenario
 STR_SAVELOAD_SAVE_CAPTION                                       :{WHITE}Захаваць гульню
@@ -3445,8 +3443,8 @@ STR_STATION_VIEW_ACCEPTS_BUTTON                                 :{BLACK}Прым
 STR_STATION_VIEW_ACCEPTS_TOOLTIP                                :{BLACK}Паказаць сьпіс прымаемых грузаў
 STR_STATION_VIEW_ACCEPTS_CARGO                                  :{BLACK}Прымае: {WHITE}{CARGO_LIST}
 
-STR_STATIOV_VIEW_EXCLUSIVE_RIGHTS_SELF                          :{BLACK}Гэта станцыя мае эксклюзыўныя транспартныя правы ў гэтым населеным пункце.
-STR_STATIOV_VIEW_EXCLUSIVE_RIGHTS_COMPANY                       :{YELLOW}{COMPANY}{BLACK} набыў эксклюзыўныя транспартныя правы ў гэтым населеным пункце.
+STR_STATION_VIEW_EXCLUSIVE_RIGHTS_SELF                          :{BLACK}Гэта станцыя мае эксклюзыўныя транспартныя правы ў гэтым населеным пункце.
+STR_STATION_VIEW_EXCLUSIVE_RIGHTS_COMPANY                       :{YELLOW}{COMPANY}{BLACK} набыў эксклюзыўныя транспартныя правы ў гэтым населеным пункце.
 
 STR_STATION_VIEW_RATINGS_BUTTON                                 :{BLACK}Рэйтынґ
 STR_STATION_VIEW_RATINGS_TOOLTIP                                :{BLACK}Паказаць рэйтынґ станцыі
@@ -3569,6 +3567,7 @@ STR_COMPANY_VIEW_RELOCATE_HQ                                    :{BLACK}Пера
 STR_COMPANY_VIEW_RELOCATE_COMPANY_HEADQUARTERS                  :{BLACK}Перамясьціць штаб-кватэру кампаніі ў іншае месца за 1% ацэнкавага кошту капіталу кампаніі. Shift+пстрычка — ацэнка кошту пераносу.
 STR_COMPANY_VIEW_INFRASTRUCTURE_BUTTON                          :{BLACK}Дэталi
 STR_COMPANY_VIEW_INFRASTRUCTURE_TOOLTIP                         :{BLACK}Паказаць дэталёвыя iнфраструктурныя падлiкi
+STR_COMPANY_VIEW_GIVE_MONEY_BUTTON                              :{BLACK}Передаць грошай
 
 STR_COMPANY_VIEW_NEW_FACE_BUTTON                                :{BLACK}Зьнешнасьць
 STR_COMPANY_VIEW_NEW_FACE_TOOLTIP                               :{BLACK}Зьмяніць зьнешнасьць дырэктара
@@ -3586,6 +3585,7 @@ STR_COMPANY_VIEW_SELL_SHARE_TOOLTIP                             :{BLACK}Прад
 
 STR_COMPANY_VIEW_COMPANY_NAME_QUERY_CAPTION                     :Кампанія
 STR_COMPANY_VIEW_PRESIDENT_S_NAME_QUERY_CAPTION                 :Імя дырэктара
+STR_COMPANY_VIEW_GIVE_MONEY_QUERY_CAPTION                       :Увядзіце суму грошай, якую вы хочаце перадаць
 
 STR_BUY_COMPANY_MESSAGE                                         :{WHITE}Мы шукаем транспартную кампанію для далучэньня да яе.{}{}Вы хочаце купіць {COMPANY} за {CURRENCY_LONG}?
 
@@ -3625,9 +3625,8 @@ STR_INDUSTRY_VIEW_REQUIRES_CARGO_CARGO                          :{BLACK}Патр
 STR_INDUSTRY_VIEW_REQUIRES_CARGO_CARGO_CARGO                    :{BLACK}Патрабуецца: {YELLOW}{STRING}{STRING}, {STRING}{STRING}, {STRING}{STRING}
 ############ range for requires ends
 
+
 ############ range for produces starts
-STR_INDUSTRY_VIEW_WAITING_FOR_PROCESSING                        :{BLACK}Груз, які чакае перапрацоўкі:
-STR_INDUSTRY_VIEW_WAITING_STOCKPILE_CARGO                       :{YELLOW}{CARGO_LONG}{STRING}{BLACK}
 STR_INDUSTRY_VIEW_PRODUCES_CARGO                                :{BLACK}Вырабляе: {YELLOW}{STRING}{STRING}
 STR_INDUSTRY_VIEW_PRODUCES_CARGO_CARGO                          :{BLACK}Вырабляе: {YELLOW}{STRING}{STRING}, {STRING}{STRING}
 ############ range for produces ends
@@ -3693,6 +3692,7 @@ STR_GROUP_ADD_SHARED_VEHICLE                                    :Дадаць т
 STR_GROUP_REMOVE_ALL_VEHICLES                                   :Выдаліць усе
 
 STR_GROUP_RENAME_CAPTION                                        :{BLACK}Перайменаваць групу
+
 
 # Build vehicle window
 STR_BUY_VEHICLE_TRAIN_RAIL_CAPTION                              :Новы цягнік
@@ -3870,10 +3870,7 @@ STR_ENGINE_PREVIEW_MAGLEV_LOCOMOTIVE.acc                        :магніта�
 
 STR_ENGINE_PREVIEW_COST_WEIGHT_SPEED_POWER                      :{BLACK}Кошт: {CURRENCY_LONG} Вага: {WEIGHT_SHORT}{}Хуткасьць: {VELOCITY}  Магутнасьць: {POWER}{}Кошт абслуг.: {CURRENCY_LONG}/год{}Ёмістасьць: {CARGO_LONG}
 STR_ENGINE_PREVIEW_COST_WEIGHT_SPEED_POWER_MAX_TE               :{BLACK}Кошт: {CURRENCY_LONG} Вага: {WEIGHT_SHORT}{}Хуткасьць: {VELOCITY}  Магутнасьць: {POWER}  Макс. ЦН: {6:FORCE}{}Кошт абслуг.: {4:CURRENCY_LONG}/год{}Ёмістасьць: {5:CARGO_LONG}
-STR_ENGINE_PREVIEW_COST_MAX_SPEED_CAPACITY_CAPACITY_RUNCOST     :{BLACK}Кошт: {CURRENCY_LONG} Макс. хуткасьць: {VELOCITY}{}Ёмістасьць: {CARGO_LONG}, {CARGO_LONG}{}Кошт абслуг.: {CURRENCY_LONG}/год
-STR_ENGINE_PREVIEW_COST_MAX_SPEED_CAPACITY_RUNCOST              :{BLACK}Кошт: {CURRENCY_LONG} Макс. хуткасьць: {VELOCITY}{}Ёмістасьць: {CARGO_LONG}{}Кошт абслуг.: {CURRENCY_LONG}/год
-STR_ENGINE_PREVIEW_COST_MAX_SPEED_RANGE_CAPACITY_CAPACITY_RUNCOST:{BLACK}Кошт: {CURRENCY_LONG} Макс. хуткасьць: {VELOCITY} Далёкасьць: {COMMA} клетк{P а i ак}{}Умяшчальнасьць: {CARGO_LONG}, {CARGO_LONG}{}Кошт абслугоўваньня: {CURRENCY_LONG}/год
-STR_ENGINE_PREVIEW_COST_MAX_SPEED_RANGE_CAPACITY_RUNCOST        :{BLACK}Кошт: {CURRENCY_LONG} Макс. хуткасьць: {VELOCITY} Далёкасьць: {COMMA} клет{P ка кi ак}{}Умяшчальнасьць: {CARGO_LONG}{}Кошт абслугоўваньня: {CURRENCY_LONG}/год
+STR_ENGINE_PREVIEW_COST_MAX_SPEED_CAP_RUNCOST                   :{BLACK}Кошт: {CURRENCY_LONG} Макс. хуткасьць: {VELOCITY}{}Ёмістасьць: {CARGO_LONG}{}Кошт абслуг.: {CURRENCY_LONG}/год
 
 # Autoreplace window
 STR_REPLACE_VEHICLES_WHITE                                      :{WHITE}Замена {STRING.gen} — {STRING}
@@ -4003,7 +4000,6 @@ STR_VEHICLE_INFO_AGE                                            :{COMMA} г{P о
 STR_VEHICLE_INFO_AGE_RED                                        :{RED}{COMMA} г{P од ады адоў} ({COMMA})
 
 STR_VEHICLE_INFO_MAX_SPEED                                      :{BLACK}Макс. хуткасьць: {LTBLUE}{VELOCITY}
-STR_VEHICLE_INFO_MAX_SPEED_RANGE                                :{BLACK}Макс. хуткасьць: {LTBLUE}{VELOCITY} {BLACK}Далёкасьць: {LTBLUE}{COMMA} клетк{P а i ак}
 STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED                         :{BLACK}Вага: {LTBLUE}{WEIGHT_SHORT} {BLACK}Магутнасьць: {LTBLUE}{POWER}{BLACK} Макс. хуткасьць: {LTBLUE}{VELOCITY}
 STR_VEHICLE_INFO_WEIGHT_POWER_MAX_SPEED_MAX_TE                  :{BLACK}Вага: {LTBLUE}{WEIGHT_SHORT} {BLACK}Магутнасьць: {LTBLUE}{POWER}{BLACK} Макс. хуткасьць: {LTBLUE}{VELOCITY} {BLACK}Макс. ЦН: {LTBLUE}{FORCE}
 

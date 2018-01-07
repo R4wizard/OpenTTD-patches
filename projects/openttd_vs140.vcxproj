@@ -151,6 +151,9 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <MinimumRequiredVersion>5.01</MinimumRequiredVersion>
     </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <Midl>
@@ -198,6 +201,9 @@
       <TargetMachine>MachineX86</TargetMachine>
       <MinimumRequiredVersion>5.01</MinimumRequiredVersion>
     </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <Midl>
@@ -257,6 +263,9 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <MinimumRequiredVersion>5.02</MinimumRequiredVersion>
     </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <Midl>
@@ -306,6 +315,9 @@
       <TargetMachine>MachineX64</TargetMachine>
       <MinimumRequiredVersion>5.02</MinimumRequiredVersion>
     </Link>
+    <Manifest>
+      <EnableDpiAwareness>PerMonitorHighDPIAware</EnableDpiAwareness>
+    </Manifest>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="..\src\tbtr_template_gui_main.cpp" />
@@ -338,6 +350,7 @@
     <ClCompile Include="..\src\departures.cpp" />
     <ClCompile Include="..\src\depot.cpp" />
     <ClCompile Include="..\src\disaster_vehicle.cpp" />
+    <ClCompile Include="..\src\dock.cpp" />
     <ClCompile Include="..\src\driver.cpp" />
     <ClCompile Include="..\src\economy.cpp" />
     <ClCompile Include="..\src\effectvehicle.cpp" />
@@ -474,6 +487,7 @@
     <ClInclude Include="..\src\direction_type.h" />
     <ClInclude Include="..\src\disaster_vehicle.h" />
     <ClInclude Include="..\src\music\dmusic.h" />
+    <ClInclude Include="..\src\dock_base.h" />
     <ClInclude Include="..\src\driver.h" />
     <ClInclude Include="..\src\economy_base.h" />
     <ClInclude Include="..\src\economy_func.h" />
@@ -589,6 +603,7 @@
     <ClInclude Include="..\src\openttd.h" />
     <ClInclude Include="..\src\order_backup.h" />
     <ClInclude Include="..\src\order_base.h" />
+    <ClInclude Include="..\src\order_cmd.h" />
     <ClInclude Include="..\src\order_func.h" />
     <ClInclude Include="..\src\order_type.h" />
     <ClInclude Include="..\src\pbs.h" />
@@ -614,6 +629,7 @@
     <ClInclude Include="..\src\sdl.h" />
     <ClInclude Include="..\src\sound\sdl_s.h" />
     <ClInclude Include="..\src\video\sdl_v.h" />
+    <ClInclude Include="..\src\schdispatch.h" />
     <ClInclude Include="..\src\settings_func.h" />
     <ClInclude Include="..\src\settings_gui.h" />
     <ClInclude Include="..\src\settings_internal.h" />
@@ -645,6 +661,7 @@
     <ClInclude Include="..\src\strgen\strgen.h" />
     <ClInclude Include="..\src\string_base.h" />
     <ClInclude Include="..\src\string_func.h" />
+    <ClInclude Include="..\src\string_func_extra.h" />
     <ClInclude Include="..\src\string_type.h" />
     <ClInclude Include="..\src\stringfilter_type.h" />
     <ClInclude Include="..\src\strings_func.h" />
@@ -680,6 +697,7 @@
     <ClInclude Include="..\src\transparency_gui.h" />
     <ClInclude Include="..\src\transport_type.h" />
     <ClInclude Include="..\src\tunnelbridge.h" />
+    <ClInclude Include="..\src\tunnel_base.h" />
     <ClInclude Include="..\src\vehicle_base.h" />
     <ClInclude Include="..\src\vehicle_func.h" />
     <ClInclude Include="..\src\vehicle_gui.h" />
@@ -711,6 +729,7 @@
     <ClCompile Include="..\src\core\bitmath_func.cpp" />
     <ClInclude Include="..\src\core\bitmath_func.hpp" />
     <ClInclude Include="..\src\core\container_func.hpp" />
+    <ClInclude Include="..\src\core\dyn_arena_alloc.hpp" />
     <ClInclude Include="..\src\core\endian_func.hpp" />
     <ClInclude Include="..\src\core\endian_type.hpp" />
     <ClInclude Include="..\src\core\enum_type.hpp" />
@@ -773,6 +792,7 @@
     <ClCompile Include="..\src\rail_gui.cpp" />
     <ClCompile Include="..\src\road_gui.cpp" />
     <ClCompile Include="..\src\roadveh_gui.cpp" />
+    <ClCompile Include="..\src\schdispatch_gui.cpp" />
     <ClCompile Include="..\src\settings_gui.cpp" />
     <ClCompile Include="..\src\ship_gui.cpp" />
     <ClCompile Include="..\src\signs_gui.cpp" />
@@ -866,6 +886,7 @@
     <ClCompile Include="..\src\rail_cmd.cpp" />
     <ClCompile Include="..\src\road_cmd.cpp" />
     <ClCompile Include="..\src\roadveh_cmd.cpp" />
+    <ClCompile Include="..\src\schdispatch_cmd.cpp" />
     <ClCompile Include="..\src\ship_cmd.cpp" />
     <ClCompile Include="..\src\signs_cmd.cpp" />
     <ClCompile Include="..\src\station_cmd.cpp" />
@@ -920,6 +941,7 @@
     <ClCompile Include="..\src\saveload\story_sl.cpp" />
     <ClCompile Include="..\src\saveload\subsidy_sl.cpp" />
     <ClCompile Include="..\src\saveload\town_sl.cpp" />
+    <ClCompile Include="..\src\saveload\tunnel_sl.cpp" />
     <ClCompile Include="..\src\saveload\vehicle_sl.cpp" />
     <ClCompile Include="..\src\saveload\waypoint_sl.cpp" />
     <ClCompile Include="..\src\saveload\signal_sl.cpp" />
@@ -1340,21 +1362,28 @@
     <ClCompile Include="..\src\saveload\tracerestrict_sl.cpp" />
     <ClCompile Include="..\src\scope_info.cpp" />
     <ClInclude Include="..\src\scope_info.h" />
+    <ClInclude Include="..\src\3rdparty\cpp-btree\btree.h" />
+    <ClInclude Include="..\src\3rdparty\cpp-btree\btree_container.h" />
+    <ClInclude Include="..\src\3rdparty\cpp-btree\btree_map.h" />
+    <ClInclude Include="..\src\3rdparty\cpp-btree\btree_set.h" />
+    <ClInclude Include="..\src\3rdparty\cpp-btree\safe_btree.h" />
+    <ClInclude Include="..\src\3rdparty\cpp-btree\safe_btree_map.h" />
+    <ClInclude Include="..\src\3rdparty\cpp-btree\safe_btree_set.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\media\openttd.ico" />
     <None Include="..\readme.txt" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="langs_vs100.vcxproj">
+    <ProjectReference Include="langs_vs140.vcxproj">
       <Project>{0f066b23-18df-4284-8265-f4a5e7e3b966}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
-    <ProjectReference Include="strgen_vs100.vcxproj">
+    <ProjectReference Include="strgen_vs140.vcxproj">
       <Project>{a133a442-bd0a-4ade-b117-ad7545e4bdd1}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
-    <ProjectReference Include="version_vs100.vcxproj">
+    <ProjectReference Include="version_vs140.vcxproj">
       <Project>{1a2b3c5e-1c23-41a5-9c9b-acba2aa75fec}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>

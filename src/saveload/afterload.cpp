@@ -13,6 +13,7 @@
 #include "../void_map.h"
 #include "../signs_base.h"
 #include "../depot_base.h"
+#include "../tunnel_base.h"
 #include "../fios.h"
 #include "../gamelog_internal.h"
 #include "../network/network.h"
@@ -29,6 +30,7 @@
 #include "../station_base.h"
 #include "../waypoint_base.h"
 #include "../roadstop_base.h"
+#include "../dock_base.h"
 #include "../tunnelbridge_map.h"
 #include "../pathfinder/yapf/yapf_cache.h"
 #include "../elrail_func.h"
@@ -57,6 +59,7 @@
 #include "../error.h"
 #include "../disaster_vehicle.h"
 #include "../tracerestrict.h"
+#include "../tunnel_map.h"
 
 
 #include "saveload_internal.h"
@@ -157,7 +160,7 @@ static void ConvertTownOwner()
 				if (GB(_m[tile].m5, 4, 2) == ROAD_TILE_CROSSING && HasBit(_m[tile].m3, 7)) {
 					_m[tile].m3 = OWNER_TOWN;
 				}
-				/* FALL THROUGH */
+				FALLTHROUGH;
 
 			case MP_TUNNELBRIDGE:
 				if (_m[tile].m1 & 0x80) SetTileOwner(tile, OWNER_TOWN);
@@ -563,6 +566,25 @@ static inline bool MayHaveBridgeAbove(TileIndex t)
 			IsTileType(t, MP_WATER) || IsTileType(t, MP_TUNNELBRIDGE) || IsTileType(t, MP_OBJECT);
 }
 
+TileIndex GetOtherTunnelBridgeEndOld(TileIndex tile)
+{
+	DiagDirection dir = GetTunnelBridgeDirection(tile);
+	TileIndexDiff delta = TileOffsByDiagDir(dir);
+	int z = GetTileZ(tile);
+
+	dir = ReverseDiagDir(dir);
+	do {
+		tile += delta;
+	} while (
+		!IsTunnelTile(tile) ||
+		GetTunnelBridgeDirection(tile) != dir ||
+		GetTileZ(tile) != z
+	);
+
+	return tile;
+}
+
+
 /**
  * Perform a (large) amount of savegame conversion *magic* in order to
  * load older savegames and to fill the caches for various purposes.
@@ -707,9 +729,9 @@ bool AfterLoadGame()
 		/* no station is determined by 'tile == INVALID_TILE' now (instead of '0') */
 		Station *st;
 		FOR_ALL_STATIONS(st) {
-			if (st->airport.tile       == 0) st->airport.tile = INVALID_TILE;
-			if (st->dock_tile          == 0) st->dock_tile    = INVALID_TILE;
-			if (st->train_station.tile == 0) st->train_station.tile   = INVALID_TILE;
+			if (st->airport.tile       == 0) st->airport.tile       = INVALID_TILE;
+			if (st->dock_station.tile  == 0) st->dock_station.tile  = INVALID_TILE;
+			if (st->train_station.tile == 0) st->train_station.tile = INVALID_TILE;
 		}
 
 		/* the same applies to Company::location_of_HQ */
@@ -741,6 +763,13 @@ bool AfterLoadGame()
 		return false;
 	}
 
+	if (_networking && CountSelectedGRFs(_grfconfig) > NETWORK_MAX_GRF_COUNT) {
+		SetSaveLoadError(STR_NEWGRF_ERROR_TOO_MANY_NEWGRFS_LOADED);
+		/* Restore the signals */
+		ResetSignalHandlers();
+		return false;
+	}
+
 	/* The value of _date_fract got divided, so make sure that old games are converted correctly. */
 	if (IsSavegameVersionBefore(11, 1) || (IsSavegameVersionBefore(147) && _date_fract > DAY_TICKS)) _date_fract /= 885;
 
@@ -750,6 +779,11 @@ bool AfterLoadGame()
 		_date_fract /= _settings_game.economy.day_length_factor;
 		assert(_date_fract < DAY_TICKS);
 		assert(_tick_skip_counter < _settings_game.economy.day_length_factor);
+	}
+
+	/* Set day length factor to 1 if loading a pre day length savegame */
+	if (SlXvIsFeatureMissing(XSLFI_VARIABLE_DAY_LENGTH) && SlXvIsFeatureMissing(XSLFI_SPRINGPP)) {
+		_settings_game.economy.day_length_factor = 1;
 	}
 
 	/* Update current year
@@ -776,12 +810,14 @@ bool AfterLoadGame()
 	if (IsSavegameVersionBefore(95))   _settings_game.vehicle.dynamic_engines = 0;
 	if (IsSavegameVersionBefore(96))   _settings_game.economy.station_noise_level = false;
 	if (IsSavegameVersionBefore(133)) {
-		_settings_game.vehicle.roadveh_acceleration_model = 0;
 		_settings_game.vehicle.train_slope_steepness = 3;
 	}
 	if (IsSavegameVersionBefore(134))  _settings_game.economy.feeder_payment_share = 75;
 	if (IsSavegameVersionBefore(138))  _settings_game.vehicle.plane_crashes = 2;
-	if (IsSavegameVersionBefore(139))  _settings_game.vehicle.roadveh_slope_steepness = 7;
+	if (IsSavegameVersionBefore(139)) {
+		_settings_game.vehicle.roadveh_acceleration_model = 0;
+		_settings_game.vehicle.roadveh_slope_steepness = 7;
+	}
 	if (IsSavegameVersionBefore(143))  _settings_game.economy.allow_town_level_crossings = true;
 	if (IsSavegameVersionBefore(159)) {
 		_settings_game.vehicle.max_train_length = 50;
@@ -842,7 +878,7 @@ bool AfterLoadGame()
 			if (st->airport.tile == INVALID_TILE) continue;
 			StringID err = INVALID_STRING_ID;
 			if (st->airport.type == 9) {
-				if (st->dock_tile != INVALID_TILE && IsOilRig(st->dock_tile)) {
+				if (st->dock_station.tile != INVALID_TILE && IsOilRig(st->dock_station.tile)) {
 					/* this airport is probably an oil rig, not a huge airport */
 				} else {
 					err = STR_GAME_SAVELOAD_ERROR_HUGE_AIRPORTS_PRESENT;
@@ -869,7 +905,7 @@ bool AfterLoadGame()
 		Aircraft *v;
 		FOR_ALL_AIRCRAFT(v) {
 			Station *st = GetTargetAirportIfValid(v);
-			if (st != NULL && ((st->dock_tile != INVALID_TILE && IsOilRig(st->dock_tile)) || st->airport.type == AT_OILRIG)) {
+			if (st != NULL && ((st->dock_station.tile != INVALID_TILE && IsOilRig(st->dock_station.tile)) || st->airport.type == AT_OILRIG)) {
 				/* aircraft is on approach to an oil rig, bail out now */
 				SetSaveLoadError(STR_GAME_SAVELOAD_ERROR_HELI_OILRIG_BUG);
 				/* Restore the signals */
@@ -976,6 +1012,26 @@ bool AfterLoadGame()
 					SB(_me[t].m6, 3, 3, st);
 					break;
 				}
+			}
+		}
+	}
+
+	if (SlXvIsFeatureMissing(XSLFI_MULTIPLE_DOCKS)) {
+		/* Dock type has changed. */
+		Station *st;
+		FOR_ALL_STATIONS(st) {
+			if (st->dock_station.tile == INVALID_TILE) continue;
+			assert(Dock::CanAllocateItem());
+			if (IsOilRig(st->dock_station.tile)) {
+				/* Set dock station tile to dest tile instead of station. */
+				st->docks = new Dock(st->dock_station.tile, st->dock_station.tile + ToTileIndexDiff({ 1, 0 }));
+			} else if (IsDock(st->dock_station.tile)) {
+				/* A normal two-tiles dock. */
+				st->docks = new Dock(st->dock_station.tile, TileAddByDiagDir(st->dock_station.tile, GetDockDirection(st->dock_station.tile)));
+			} else if (IsBuoy(st->dock_station.tile)) {
+				/* A buoy. */
+			} else {
+				NOT_REACHED();
 			}
 		}
 	}
@@ -2000,6 +2056,31 @@ bool AfterLoadGame()
 		}
 	}
 
+	/* Tunnel pool has to be initiated before reservations. */
+	if (SlXvIsFeatureMissing(XSLFI_CHUNNEL)) {
+		for (TileIndex t = 0; t < map_size; t++) {
+			if (IsTunnelTile(t)) {
+				DiagDirection dir = GetTunnelBridgeDirection(t);
+				if (dir == DIAGDIR_SE || dir == DIAGDIR_SW) {
+					TileIndex start_tile = t;
+					TileIndex end_tile = GetOtherTunnelBridgeEndOld(start_tile);
+
+					if (!Tunnel::CanAllocateItem()) {
+						SetSaveLoadError(STR_ERROR_TUNNEL_TOO_MANY);
+						/* Restore the signals */
+						ResetSignalHandlers();
+						return false;
+					}
+
+					const Tunnel *t = new Tunnel(start_tile, end_tile, TileHeight(start_tile), false);
+
+					SetTunnelIndex(start_tile, t->index);
+					SetTunnelIndex(end_tile, t->index);
+				}
+			}
+		}
+	}
+
 	/* Move the signal variant back up one bit for PBS. We don't convert the old PBS
 	 * format here, as an old layout wouldn't work properly anyway. To be safe, we
 	 * clear any possible PBS reservations as well. */
@@ -2634,7 +2715,7 @@ bool AfterLoadGame()
 			} else if (dir == ReverseDiagDir(vdir)) { // Leaving tunnel
 				hidden = frame < TILE_SIZE - _tunnel_visibility_frame[dir];
 				/* v->tile changes at the moment when the vehicle leaves the tunnel. */
-				v->tile = hidden ? GetOtherTunnelBridgeEnd(vtile) : vtile;
+				v->tile = hidden ? GetOtherTunnelBridgeEndOld(vtile) : vtile;
 			} else {
 				/* We could get here in two cases:
 				 * - for road vehicles, it is reversing at the end of the tunnel
@@ -3268,6 +3349,15 @@ bool AfterLoadGame()
 		}
 	}
 
+	if (SlXvIsFeatureMissing(XSLFI_CUSTOM_BRIDGE_HEADS)) {
+		/* ensure that previously unused custom bridge-head bits are cleared */
+		for (TileIndex t = 0; t < map_size; t++) {
+			if (IsBridgeTile(t) && GetTunnelBridgeTransportType(t) == TRANSPORT_ROAD) {
+				SB(_m[t].m2, 0, 8, 0);
+			}
+		}
+	}
+
 	/* Station acceptance is some kind of cache */
 	if (IsSavegameVersionBefore(127)) {
 		Station *st;
@@ -3310,6 +3400,40 @@ bool AfterLoadGame()
 	/* Set lifetime vehicle profit to 0 if lifetime profit feature is missing */
 	if (!SlXvIsFeaturePresent(XSLFI_TOWN_CARGO_ADJ, 2)) {
 		_settings_game.economy.town_cargo_scale_factor = _settings_game.economy.old_town_cargo_factor * 10;
+	}
+
+	/* Set day length factor to 1 if loading a pre day length savegame */
+	if (SlXvIsFeatureMissing(XSLFI_VARIABLE_DAY_LENGTH) && SlXvIsFeatureMissing(XSLFI_SPRINGPP)) {
+		_settings_game.economy.day_length_factor = 1;
+	}
+
+	if (SlXvIsFeatureMissing(XSLFI_SAFER_CROSSINGS)) {
+		for (TileIndex t = 0; t < map_size; t++) {
+			if (IsLevelCrossingTile(t)) {
+				SetCrossingOccupiedByRoadVehicle(t, EnsureNoRoadVehicleOnGround(t).Failed());
+			}
+		}
+	}
+
+	if (SlXvIsFeatureMissing(XSLFI_TIMETABLE_EXTRA)) {
+		Vehicle *v;
+		FOR_ALL_VEHICLES(v) {
+			v->cur_timetable_order_index = v->GetNumManualOrders() > 0 ? v->cur_real_order_index : INVALID_VEH_ORDER_ID;
+		}
+		OrderBackup *bckup;
+		FOR_ALL_ORDER_BACKUPS(bckup) {
+			bckup->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
+		}
+		Order *order;
+		FOR_ALL_ORDERS(order) {
+			if (order->IsType(OT_CONDITIONAL)) {
+				assert(order->GetTravelTime() == 0);
+			}
+		}
+		OrderList *order_list;
+		FOR_ALL_ORDER_LISTS(order_list) {
+			order_list->DebugCheckSanity();
+		}
 	}
 
 	/* Road stops is 'only' updating some caches */

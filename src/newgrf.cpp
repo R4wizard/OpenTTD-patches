@@ -41,7 +41,6 @@
 #include "date_func.h"
 #include "string_func.h"
 #include "network/network.h"
-#include <map>
 #include "smallmap_gui.h"
 #include "genworld.h"
 #include "error.h"
@@ -51,6 +50,8 @@
 
 #include "table/strings.h"
 #include "table/build_industry.h"
+
+#include "3rdparty/cpp-btree/btree_map.h"
 
 #include "safeguards.h"
 
@@ -90,7 +91,7 @@ private:
 	};
 
 	/** Currently referenceable spritesets */
-	std::map<uint, SpriteSet> spritesets[GSF_END];
+	btree::btree_map<uint, SpriteSet> spritesets[GSF_END];
 
 public:
 	/* Global state */
@@ -347,6 +348,7 @@ struct GRFLocation {
 	uint32 grfid;
 	uint32 nfoline;
 
+	GRFLocation() { }
 	GRFLocation(uint32 grfid, uint32 nfoline) : grfid(grfid), nfoline(nfoline) { }
 
 	bool operator<(const GRFLocation &other) const
@@ -360,8 +362,8 @@ struct GRFLocation {
 	}
 };
 
-static std::map<GRFLocation, SpriteID> _grm_sprites;
-typedef std::map<GRFLocation, byte*> GRFLineToSpriteOverride;
+static btree::btree_map<GRFLocation, SpriteID> _grm_sprites;
+typedef btree::btree_map<GRFLocation, byte*> GRFLineToSpriteOverride;
 static GRFLineToSpriteOverride _grf_line_to_action6_sprite_override;
 
 /**
@@ -553,24 +555,29 @@ static StringID TTDPStringIDToOTTDStringIDMapping(StringID str)
  */
 StringID MapGRFStringID(uint32 grfid, StringID str)
 {
-	/* 0xD0 and 0xDC stand for all the TextIDs in the range
-	 * of 0xD000 (misc graphics texts) and 0xDC00 (misc persistent texts).
-	 * These strings are unique to each grf file, and thus require to be used with the
-	 * grfid in which they are declared */
-	switch (GB(str, 8, 8)) {
-		case 0xD0: case 0xD1: case 0xD2: case 0xD3:
-		case 0xDC:
-			return GetGRFStringID(grfid, str);
-
-		case 0xD4: case 0xD5: case 0xD6: case 0xD7:
-			/* Strings embedded via 0x81 have 0x400 added to them (no real
-			 * explanation why...) */
-			return GetGRFStringID(grfid, str - 0x400);
-
-		default: break;
+	if (IsInsideMM(str, 0xD800, 0xE000)) {
+		/* General text provided by NewGRF.
+		 * In the specs this is called the 0xDCxx range (misc presistent texts),
+		 * but we meanwhile extended the range to 0xD800-0xDFFF.
+		 * Note: We are not involved in the "persistent" business, since we do not store
+		 * any NewGRF strings in savegames. */
+		return GetGRFStringID(grfid, str);
+	} else if (IsInsideMM(str, 0xD000, 0xD800)) {
+		/* Callback text provided by NewGRF.
+		 * In the specs this is called the 0xD0xx range (misc graphics texts).
+		 * These texts can be returned by various callbacks.
+		 *
+		 * Due to how TTDP implements the GRF-local- to global-textid translation
+		 * texts included via 0x80 or 0x81 control codes have to add 0x400 to the textid.
+		 * We do not care about that difference and just mask out the 0x400 bit.
+		 */
+		str &= ~0x400;
+		return GetGRFStringID(grfid, str);
+	} else {
+		/* The NewGRF wants to include/reference an original TTD string.
+		 * Try our best to find an equivalent one. */
+		return TTDPStringIDToOTTDStringIDMapping(str);
 	}
-
-	return TTDPStringIDToOTTDStringIDMapping(str);
 }
 
 static std::map<uint32, uint32> _grf_id_overrides;
@@ -2967,7 +2974,7 @@ static ChangeInfoResult CargoChangeInfo(uint cid, int numinfo, int prop, ByteRea
 					case 0x0B: cs->town_effect = TE_FOOD; break;
 					default:
 						grfmsg(1, "CargoChangeInfo: Unknown town growth substitute value %d, setting to none.", substitute_type);
-						/* FALL THROUGH */
+						FALLTHROUGH;
 					case 0xFF: cs->town_effect = TE_NONE; break;
 				}
 				break;
@@ -3673,6 +3680,9 @@ static void DuplicateTileTable(AirportSpec *as)
 		MemCpyT(depot_table, as->depot_table, as->nof_depots);
 	}
 	as->depot_table = depot_table;
+	Direction *rotation = MallocT<Direction>(as->num_table);
+	MemCpyT(rotation, as->rotation, as->num_table);
+	as->rotation = rotation;
 }
 
 /**
@@ -3743,6 +3753,7 @@ static ChangeInfoResult AirportChangeInfo(uint airport, int numinfo, int prop, B
 
 			case 0x0A: { // Set airport layout
 				as->num_table = buf->ReadByte(); // Number of layaouts
+				free(as->rotation);
 				as->rotation = MallocT<Direction>(as->num_table);
 				uint32 defsize = buf->ReadDWord();  // Total size of the definition
 				AirportTileTable **tile_table = CallocT<AirportTileTable*>(as->num_table); // Table with tiles to compose the airport
@@ -3751,7 +3762,7 @@ static ChangeInfoResult AirportChangeInfo(uint airport, int numinfo, int prop, B
 				const AirportTileTable *copy_from;
 				try {
 					for (byte j = 0; j < as->num_table; j++) {
-						as->rotation[j] = (Direction)buf->ReadByte();
+						const_cast<Direction&>(as->rotation[j]) = (Direction)buf->ReadByte();
 						for (int k = 0;; k++) {
 							att[k].ti.x = buf->ReadByte(); // Offsets from northermost tile
 							att[k].ti.y = buf->ReadByte();
@@ -4095,7 +4106,7 @@ static ChangeInfoResult RailTypeChangeInfo(uint id, int numinfo, int prop, ByteR
 					RailType rt = GetRailTypeByLabel(BSWAP32(label), false);
 					if (rt != INVALID_RAILTYPE) {
 						switch (prop) {
-							case 0x0F: SetBit(rti->powered_railtypes, rt); // Powered implies compatible.
+							case 0x0F: SetBit(rti->powered_railtypes, rt);               FALLTHROUGH; // Powered implies compatible.
 							case 0x0E: SetBit(rti->compatible_railtypes, rt);            break;
 							case 0x18: SetBit(rti->introduction_required_railtypes, rt); break;
 							case 0x19: SetBit(rti->introduces_railtypes, rt);            break;
@@ -4212,7 +4223,7 @@ static ChangeInfoResult RailTypeReserveInfo(uint id, int numinfo, int prop, Byte
 					break;
 				}
 				grfmsg(1, "RailTypeReserveInfo: Ignoring property 1D for rail type %u because no label was set", id + i);
-				/* FALL THROUGH */
+				FALLTHROUGH;
 
 			case 0x0E: // Compatible railtype list
 			case 0x0F: // Powered railtype list
@@ -4351,7 +4362,7 @@ static bool HandleChangeInfoResult(const char *caller, ChangeInfoResult cir, uin
 
 		case CIR_UNKNOWN:
 			grfmsg(0, "%s: Unknown property 0x%02X of feature 0x%02X, disabling", caller, property, feature);
-			/* FALL THROUGH */
+			FALLTHROUGH;
 
 		case CIR_INVALID_ID: {
 			/* No debug message for an invalid ID, as it has already been output */
@@ -5480,13 +5491,12 @@ static void FeatureNewName(ByteReader *buf)
 				}
 				break;
 
-			case GSF_INDUSTRIES: {
-				AddGRFString(_cur.grffile->grfid, id, lang, new_scheme, true, name, STR_UNDEFINED);
-				break;
-			}
-
-			case GSF_HOUSES:
 			default:
+				if (IsInsideMM(id, 0xD000, 0xD400) || IsInsideMM(id, 0xD800, 0xE000)) {
+					AddGRFString(_cur.grffile->grfid, id, lang, new_scheme, true, name, STR_UNDEFINED);
+					break;
+				}
+
 				switch (GB(id, 8, 8)) {
 					case 0xC4: // Station class name
 						if (_cur.grffile->stations == NULL || _cur.grffile->stations[GB(id, 0, 8)] == NULL) {
@@ -5519,14 +5529,6 @@ static void FeatureNewName(ByteReader *buf)
 						} else {
 							_cur.grffile->housespec[GB(id, 0, 8)]->building_name = AddGRFString(_cur.grffile->grfid, id, lang, new_scheme, false, name, STR_UNDEFINED);
 						}
-						break;
-
-					case 0xD0:
-					case 0xD1:
-					case 0xD2:
-					case 0xD3:
-					case 0xDC:
-						AddGRFString(_cur.grffile->grfid, id, lang, new_scheme, true, name, STR_UNDEFINED);
 						break;
 
 					default:
@@ -5931,7 +5933,7 @@ static void CfgApply(ByteReader *buf)
 	GRFLineToSpriteOverride::iterator it = _grf_line_to_action6_sprite_override.find(location);
 	if (it != _grf_line_to_action6_sprite_override.end()) {
 		free(preload_sprite);
-		preload_sprite = _grf_line_to_action6_sprite_override[location];
+		preload_sprite = it->second;
 	} else {
 		_grf_line_to_action6_sprite_override[location] = preload_sprite;
 	}
@@ -7258,7 +7260,7 @@ static void TranslateGRFStrings(ByteReader *buf)
 	byte num_strings = buf->ReadByte();
 	uint16 first_id  = buf->ReadWord();
 
-	if (!((first_id >= 0xD000 && first_id + num_strings <= 0xD3FF) || (first_id >= 0xDC00 && first_id + num_strings <= 0xDCFF))) {
+	if (!((first_id >= 0xD000 && first_id + num_strings <= 0xD400) || (first_id >= 0xD800 && first_id + num_strings <= 0xE000))) {
 		grfmsg(7, "TranslateGRFStrings: Attempting to set out-of-range string IDs in action 13 (first: 0x%4X, number: 0x%2X)", first_id, num_strings);
 		return;
 	}
@@ -7933,6 +7935,7 @@ static void ResetCustomAirports()
 					}
 					free(as->table);
 					free(as->depot_table);
+					free(as->rotation);
 
 					free(as);
 				}
@@ -8760,7 +8763,7 @@ static void DecodeSpecialSprite(byte *buf, uint num, GrfLoadingStage stage)
 		FioReadBlock(buf, num);
 	} else {
 		/* Use the preloaded sprite data. */
-		buf = _grf_line_to_action6_sprite_override[location];
+		buf = it->second;
 		grfmsg(7, "DecodeSpecialSprite: Using preloaded pseudo sprite data");
 
 		/* Skip the real (original) content of this action. */
@@ -9269,7 +9272,7 @@ void LoadNewGRF(uint load_index, uint file_index, uint num_baseset)
 			if (stage == GLS_LABELSCAN) InitNewGRFFile(c);
 
 			if (!HasBit(c->flags, GCF_STATIC) && !HasBit(c->flags, GCF_SYSTEM)) {
-				if (num_non_static == NETWORK_MAX_GRF_COUNT) {
+				if ((_networking && num_non_static == NETWORK_MAX_GRF_COUNT) || slot == MAX_FILE_SLOTS) {
 					DEBUG(grf, 0, "'%s' is not loaded as the maximum number of non-static GRFs has been reached", c->filename);
 					c->status = GCS_DISABLED;
 					c->error  = new GRFError(STR_NEWGRF_ERROR_MSG_FATAL, STR_NEWGRF_ERROR_TOO_MANY_NEWGRFS_LOADED);
@@ -9312,12 +9315,13 @@ void LoadNewGRF(uint load_index, uint file_index, uint num_baseset)
 /**
  * Returns amount of user selected NewGRFs files.
  */
-int CountSelectedGRFs(GRFConfig *grfconf)
+uint CountSelectedGRFs(GRFConfig *grfconf)
 {
-	int i = 0;
+	uint i = 0;
 
 	/* Find last entry in the list */
-	for (const GRFConfig *list = grfconf; list != NULL; list = list->next, i++) {
+	for (const GRFConfig *list = grfconf; list != NULL; list = list->next) {
+		if (!HasBit(list->flags, GCF_STATIC) && !HasBit(list->flags, GCF_SYSTEM)) i++;
 	}
 	return i;
 }

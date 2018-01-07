@@ -139,6 +139,7 @@ struct GUISettings {
 	bool   departure_show_all_stops;         ///< whether to show stops regardless of loading/unloading done at them
 	bool   departure_merge_identical;        ///< whether to merge identical departures
 	bool   left_mouse_btn_scrolling;         ///< left mouse button scroll
+	bool   right_mouse_wnd_close;            ///< close window with right click
 	bool   pause_on_newgame;                 ///< whether to start new games paused or not
 	bool   enable_signal_gui;                ///< show the signal GUI when the signal button is pressed
 	Year   coloured_news_year;               ///< when does newspaper become coloured?
@@ -171,9 +172,13 @@ struct GUISettings {
 	bool   show_train_weight_ratios_in_details;   ///< show train weight ratios in vehicle details window top widget
 	bool   show_vehicle_group_in_details;    ///< show vehicle group in vehicle details window top widget
 	bool   show_restricted_signal_default;   ///< Show restricted electric signals using the default sprite
+	bool   show_adv_tracerestrict_features;  ///< Show advanced trace restrict features in UI
+	bool   show_progsig_ui;                  ///< Show programmable signals feature in UI
+	bool   show_veh_list_cargo_filter;       ///< Show cargo list filter in UI
 	uint8  osk_activation;                   ///< Mouse gesture to trigger the OSK.
 	bool   show_vehicle_route_steps;         ///< when a window related to a specific vehicle is focused, show route steps
 	bool   show_vehicle_list_company_colour; ///< show the company colour of vehicles which have an owner different to the owner of the vehicle list
+	bool   enable_single_veh_shared_order_gui;    ///< enable showing a single vehicle in the shared order GUI window
 
 	uint16 console_backlog_timeout;          ///< the minimum amount of time items should be in the console backlog before they will be removed in ~3 seconds granularity.
 	uint16 console_backlog_length;           ///< the minimum amount of items in the console backlog before items will be removed.
@@ -355,6 +360,9 @@ struct ConstructionSettings {
 	uint16 maximum_signal_evaluations;       ///< maximum number of programmable signals which may be evaluated in one pass
 	byte   simulated_wormhole_signals;       ///< simulate signals in tunnel
 	bool   enable_build_river;               ///< enable building rivers in-game
+	bool   enable_remove_water;              ///< enable removing sea and rivers in-game
+	uint8  road_custom_bridge_heads;         ///< allow construction of road custom bridge heads
+	bool   chunnel;                          ///< allow construction of tunnels under water
 
 	uint32 terraform_per_64k_frames;         ///< how many tile heights may, over a long period, be terraformed per 65536 frames?
 	uint16 terraform_frame_burst;            ///< how many tile heights may, over a short period, be terraformed?
@@ -512,6 +520,7 @@ struct VehicleSettings {
 	byte   road_side;                        ///< the side of the road vehicles drive on
 	uint8  plane_crashes;                    ///< number of plane crashes, 0 = none, 1 = reduced, 2 = normal
 	bool   adjacent_crossings;               ///< enable closing of adjacent level crossings
+	bool   safer_crossings;                  ///< enable safer level crossings
 	bool   improved_breakdowns;              ///< different types, chances and severities of breakdowns
 	bool   pay_for_repair;                   ///< pay for repairing vehicle
 	uint8  repair_cost;                      ///< cost of repairing vehicle
@@ -526,6 +535,7 @@ struct EconomySettings {
 	bool   smooth_economy;                   ///< smooth economy
 	bool   allow_shares;                     ///< allow the buying/selling of shares
 	uint8  feeder_payment_share;             ///< percentage of leg payment to virtually pay in feeder systems
+	bool   feeder_payment_src_station;       ///< calculate leg payment relative to the source station, not the leg source
 	byte   dist_local_authority;             ///< distance for town local authority, default 20
 	bool   exclusive_rights;                 ///< allow buying exclusive rights
 	bool   fund_buildings;                   ///< allow funding new buildings
@@ -533,11 +543,13 @@ struct EconomySettings {
 	bool   give_money;                       ///< allow giving other companies money
 	bool   mod_road_rebuild;                 ///< roadworks remove unnecessary RoadBits
 	bool   multiple_industry_per_town;       ///< allow many industries of the same type per town
-	uint8  town_growth_rate;                 ///< town growth rate
+	int8   town_growth_rate;                 ///< town growth rate
+	uint8  town_growth_cargo_transported;    ///< percentage of town growth rate which depends on proportion of transported cargo in the last month
 	uint8  larger_towns;                     ///< the number of cities to build. These start off larger and grow twice as fast
 	uint8  initial_city_size;                ///< multiplier for the initial size of the cities compared to towns
 	TownLayoutByte town_layout;              ///< select town layout, @see TownLayout
 	bool   allow_town_roads;                 ///< towns are allowed to build roads (always allowed when generating world / in SE)
+	uint16  town_min_distance;               ///< minimum distance between towns
 	TownFoundingByte found_town;             ///< town founding, @see TownFounding
 	bool   station_noise_level;              ///< build new airports when the town noise level is still within accepted limits
 	uint16 town_noise_population[3];         ///< population to base decision on noise evaluation (@see town_council_tolerance)
@@ -550,6 +562,7 @@ struct EconomySettings {
 	bool   infrastructure_maintenance;       ///< enable monthly maintenance fee for owner infrastructure
 	uint8  day_length_factor;                ///< factor which the length of day is multiplied
 	uint16 random_road_reconstruction;       ///< chance out of 1000 per tile loop for towns to start random road re-construction
+	bool   town_bridge_over_rail;            ///< enable towns to build bridges over rails
 };
 
 struct LinkGraphSettings {

@@ -51,12 +51,14 @@
 #include "tunnel_map.h"
 #include "depot_map.h"
 #include "gamelog.h"
+#include "tracerestrict.h"
 #include "linkgraph/linkgraph.h"
 #include "linkgraph/refresh.h"
 #include "blitter/factory.hpp"
 #include "tbtr_template_vehicle_func.h"
 #include "string_func.h"
 #include "scope_info.h"
+#include "3rdparty/cpp-btree/btree_set.h"
 
 #include "table/strings.h"
 
@@ -75,7 +77,7 @@ uint16 _returned_mail_refit_capacity; ///< Stores the mail capacity after a refi
 VehiclePool _vehicle_pool("Vehicle");
 INSTANTIATE_POOL_METHODS(Vehicle)
 
-static std::set<Vehicle *> _vehicles_to_pay_repair;
+static btree::btree_set<Vehicle *> _vehicles_to_pay_repair;
 
 /**
  * Determine shared bounds of all sprites.
@@ -152,7 +154,8 @@ void VehicleServiceInDepot(Vehicle *v)
 	if (v->type == VEH_TRAIN) {
 		if (v->Next() != NULL) VehicleServiceInDepot(v->Next());
 		if (!(Train::From(v)->IsEngine()) && !(Train::From(v)->IsRearDualheaded())) return;
-		ClrBit(Train::From(v)->flags,VRF_NEED_REPAIR);
+		ClrBit(Train::From(v)->flags, VRF_NEED_REPAIR);
+		ClrBit(Train::From(v)->flags, VRF_HAS_HIT_RV);
 		Train::From(v)->critical_breakdown_count = 0;
 		const RailVehicleInfo *rvi = &e->u.rail;
 		v->vcache.cached_max_speed = rvi->max_speed;
@@ -160,6 +163,8 @@ void VehicleServiceInDepot(Vehicle *v)
 			Train::From(v)->ConsistChanged(CCF_REFIT);
 			CLRBITS(Train::From(v)->flags, (1 << VRF_BREAKDOWN_BRAKING) | VRF_IS_BROKEN );
 		}
+	} else if (v->type == VEH_ROAD) {
+		RoadVehicle::From(v)->critical_breakdown_count = 0;
 	}
 	v->vehstatus &= ~VS_AIRCRAFT_BROKEN;
 	SetWindowDirty(WC_VEHICLE_DETAILS, v->index); // ensure that last service date and reliability are updated
@@ -196,7 +201,8 @@ bool Vehicle::NeedsServicing() const
 	if ((this->ServiceIntervalIsPercent() ?
 			(this->reliability >= this->GetEngine()->reliability * (100 - this->service_interval) / 100) :
 			(this->date_of_last_service + this->service_interval >= _date))
-			&& !(this->type == VEH_TRAIN && HasBit(Train::From(this)->flags, VRF_NEED_REPAIR))) {
+			&& !(this->type == VEH_TRAIN && HasBit(Train::From(this)->flags, VRF_NEED_REPAIR))
+			&& !(this->type == VEH_ROAD && RoadVehicle::From(this)->critical_breakdown_count > 0)) {
 		return false;
 	}
 
@@ -573,6 +579,40 @@ CommandCost EnsureNoVehicleOnGround(TileIndex tile)
 	return CommandCost();
 }
 
+/**
+ * Callback that returns 'real' vehicles lower or at height \c *(int*)data, for road vehicles.
+ * @param v Vehicle to examine.
+ * @param data Pointer to height data.
+ * @return \a v if conditions are met, else \c NULL.
+ */
+static Vehicle *EnsureNoRoadVehicleProcZ(Vehicle *v, void *data)
+{
+	int z = *(int*)data;
+
+	if (v->type != VEH_ROAD) return NULL;
+	if (v->z_pos > z) return NULL;
+
+	return v;
+}
+
+/**
+ * Ensure there is no road vehicle at the ground at the given position.
+ * @param tile Position to examine.
+ * @return Succeeded command (ground is free) or failed command (a vehicle is found).
+ */
+CommandCost EnsureNoRoadVehicleOnGround(TileIndex tile)
+{
+	int z = GetTileMaxPixelZ(tile);
+
+	/* Value v is not safe in MP games, however, it is used to generate a local
+	 * error message only (which may be different for different machines).
+	 * Such a message does not affect MP synchronisation.
+	 */
+	Vehicle *v = VehicleFromPos(tile, &z, &EnsureNoRoadVehicleProcZ, true);
+	if (v != NULL) return_cmd_error(STR_ERROR_ROAD_VEHICLE_IN_THE_WAY);
+	return CommandCost();
+}
+
 /** Procedure called for every vehicle found in tunnel/bridge in the hash map */
 static Vehicle *GetVehicleTunnelBridgeProc(Vehicle *v, void *data)
 {
@@ -855,6 +895,11 @@ void Vehicle::PreDestructor()
 
 		if (this->owner == _local_company) InvalidateAutoreplaceWindow(this->engine_type, this->group_id);
 		DeleteGroupHighlightOfVehicle(this);
+		if (this->type == VEH_TRAIN) {
+			extern void DeleteTraceRestrictSlotHighlightOfVehicle(const Vehicle *v);
+
+			DeleteTraceRestrictSlotHighlightOfVehicle(this);
+		}
 	}
 
 	if (this->type == VEH_AIRCRAFT && this->IsPrimaryVehicle()) {
@@ -875,6 +920,11 @@ void Vehicle::PreDestructor()
 		}
 	}
 
+	if (this->type == VEH_TRAIN && HasBit(Train::From(this)->flags, VRF_HAVE_SLOT)) {
+		TraceRestrictRemoveVehicleFromAllSlots(this->index);
+		ClrBit(Train::From(this)->flags, VRF_HAVE_SLOT);
+	}
+
 	if (this->Previous() == NULL) {
 		InvalidateWindowData(WC_VEHICLE_DEPOT, this->tile);
 	}
@@ -885,6 +935,7 @@ void Vehicle::PreDestructor()
 		DeleteWindowById(WC_VEHICLE_REFIT, this->index);
 		DeleteWindowById(WC_VEHICLE_DETAILS, this->index);
 		DeleteWindowById(WC_VEHICLE_TIMETABLE, this->index);
+		DeleteWindowById(WC_SCHDISPATCH_SLOTS, this->index);
 		DeleteWindowById(WC_VEHICLE_CARGO_TYPE_LOAD_ORDERS, this->index);
 		DeleteWindowById(WC_VEHICLE_CARGO_TYPE_UNLOAD_ORDERS, this->index);
 		SetWindowDirty(WC_COMPANY, this->owner);
@@ -1239,6 +1290,37 @@ static void DoDrawVehicle(const Vehicle *v)
 	EndSpriteCombine();
 }
 
+struct ViewportHashBound {
+	int xl, xu, yl, yu;
+};
+
+static ViewportHashBound GetViewportHashBound(int l, int r, int t, int b) {
+	int xl = (l - (70 * ZOOM_LVL_BASE)) >> (7 + ZOOM_LVL_SHIFT);
+	int xu = (r                       ) >> (7 + ZOOM_LVL_SHIFT);
+	/* compare after shifting instead of before, so that lower bits don't affect comparison result */
+	if (xu - xl < (1 << 6)) {
+		xl &= 0x3F;
+		xu &= 0x3F;
+	} else {
+		/* scan whole hash row */
+		xl = 0;
+		xu = 0x3F;
+	}
+
+	int yl = (t - (70 * ZOOM_LVL_BASE)) >> (6 + ZOOM_LVL_SHIFT);
+	int yu = (b                       ) >> (6 + ZOOM_LVL_SHIFT);
+	/* compare after shifting instead of before, so that lower bits don't affect comparison result */
+	if (yu - yl < (1 << 6)) {
+		yl = (yl & 0x3F) << 6;
+		yu = (yu & 0x3F) << 6;
+	} else {
+		/* scan whole column */
+		yl = 0;
+		yu = 0x3F << 6;
+	}
+	return { xl, xu, yl, yu };
+};
+
 /**
  * Add the vehicle sprites that should be drawn at a part of the screen.
  * @param dpi Rectangle being drawn.
@@ -1252,28 +1334,10 @@ void ViewportAddVehicles(DrawPixelInfo *dpi)
 	const int b = dpi->top + dpi->height;
 
 	/* The hash area to scan */
-	int xl, xu, yl, yu;
+	const ViewportHashBound vhb = GetViewportHashBound(l, r, t, b);
 
-	if (dpi->width + (70 * ZOOM_LVL_BASE) < (1 << (7 + 6 + ZOOM_LVL_SHIFT))) {
-		xl = GB(l - (70 * ZOOM_LVL_BASE), 7 + ZOOM_LVL_SHIFT, 6);
-		xu = GB(r,                        7 + ZOOM_LVL_SHIFT, 6);
-	} else {
-		/* scan whole hash row */
-		xl = 0;
-		xu = 0x3F;
-	}
-
-	if (dpi->height + (70 * ZOOM_LVL_BASE) < (1 << (6 + 6 + ZOOM_LVL_SHIFT))) {
-		yl = GB(t - (70 * ZOOM_LVL_BASE), 6 + ZOOM_LVL_SHIFT, 6) << 6;
-		yu = GB(b,                        6 + ZOOM_LVL_SHIFT, 6) << 6;
-	} else {
-		/* scan whole column */
-		yl = 0;
-		yu = 0x3F << 6;
-	}
-
-	for (int y = yl;; y = (y + (1 << 6)) & (0x3F << 6)) {
-		for (int x = xl;; x = (x + 1) & 0x3F) {
+	for (int y = vhb.yl;; y = (y + (1 << 6)) & (0x3F << 6)) {
+		for (int x = vhb.xl;; x = (x + 1) & 0x3F) {
 			const Vehicle *v = _vehicle_viewport_hash[x + y]; // already masked & 0xFFF
 
 			while (v != NULL) {
@@ -1287,10 +1351,10 @@ void ViewportAddVehicles(DrawPixelInfo *dpi)
 				v = v->hash_viewport_next;
 			}
 
-			if (x == xu) break;
+			if (x == vhb.xu) break;
 		}
 
-		if (y == yu) break;
+		if (y == vhb.yu) break;
 	}
 }
 
@@ -1303,31 +1367,13 @@ void ViewportMapDrawVehicles(DrawPixelInfo *dpi)
 	const int b = dpi->top + dpi->height;
 
 	/* The hash area to scan */
-	int xl, xu, yl, yu;
-
-	if (dpi->width + (70 * ZOOM_LVL_BASE) < (1 << (7 + 6 + ZOOM_LVL_SHIFT))) {
-		xl = GB(l - (70 * ZOOM_LVL_BASE), 7 + ZOOM_LVL_SHIFT, 6);
-		xu = GB(r,                        7 + ZOOM_LVL_SHIFT, 6);
-	} else {
-		/* scan whole hash row */
-		xl = 0;
-		xu = 0x3F;
-	}
-
-	if (dpi->height + (70 * ZOOM_LVL_BASE) < (1 << (6 + 6 + ZOOM_LVL_SHIFT))) {
-		yl = GB(t - (70 * ZOOM_LVL_BASE), 6 + ZOOM_LVL_SHIFT, 6) << 6;
-		yu = GB(b,                        6 + ZOOM_LVL_SHIFT, 6) << 6;
-	} else {
-		/* scan whole column */
-		yl = 0;
-		yu = 0x3F << 6;
-	}
+	const ViewportHashBound vhb = GetViewportHashBound(l, r, t, b);
 
 	const int w = UnScaleByZoom(dpi->width, dpi->zoom);
 	const int h = UnScaleByZoom(dpi->height, dpi->zoom);
 	Blitter *blitter = BlitterFactory::GetCurrentBlitter();
-	for (int y = yl;; y = (y + (1 << 6)) & (0x3F << 6)) {
-		for (int x = xl;; x = (x + 1) & 0x3F) {
+	for (int y = vhb.yl;; y = (y + (1 << 6)) & (0x3F << 6)) {
+		for (int x = vhb.xl;; x = (x + 1) & 0x3F) {
 			const Vehicle *v = _vehicle_viewport_hash[x + y]; // already masked & 0xFFF
 
 			while (v != NULL) {
@@ -1343,10 +1389,10 @@ void ViewportMapDrawVehicles(DrawPixelInfo *dpi)
 				v = v->hash_viewport_next;
 			}
 
-			if (x == xu) break;
+			if (x == vhb.xu) break;
 		}
 
-		if (y == yu) break;
+		if (y == vhb.yu) break;
 	}
 }
 
@@ -1592,6 +1638,9 @@ bool Vehicle::HandleBreakdown()
 				if (this->breakdown_type == BREAKDOWN_LOW_POWER ||
 						this->First()->cur_speed <= ((this->breakdown_type == BREAKDOWN_LOW_SPEED) ? this->breakdown_severity : 0)) {
 					switch (this->breakdown_type) {
+						case BREAKDOWN_RV_CRASH:
+							if (_settings_game.vehicle.improved_breakdowns) SetBit(Train::From(this)->flags, VRF_HAS_HIT_RV);
+						/* FALL THROUGH */
 						case BREAKDOWN_CRITICAL:
 							if (!PlayVehicleSound(this, VSE_BREAKDOWN)) {
 								bool train_or_ship = this->type == VEH_TRAIN || this->type == VEH_SHIP;
@@ -1651,6 +1700,13 @@ bool Vehicle::HandleBreakdown()
 							EffectVehicle *u = CreateEffectVehicleRel(this, 4, 4, 5, EV_BREAKDOWN_SMOKE);
 							if (u != NULL) u->animation_state = this->breakdown_delay * 2;
 						}
+						if (_settings_game.vehicle.improved_breakdowns) {
+							if (this->type == VEH_ROAD) {
+								if (RoadVehicle::From(this)->critical_breakdown_count != 255) {
+									RoadVehicle::From(this)->critical_breakdown_count++;
+								}
+							}
+						}
 					/* FALL THROUGH */
 					case BREAKDOWN_EM_STOP:
 						this->cur_speed = 0;
@@ -1673,7 +1729,7 @@ bool Vehicle::HandleBreakdown()
 				return (this->breakdown_type == BREAKDOWN_CRITICAL || this->breakdown_type == BREAKDOWN_EM_STOP);
 			}
 
-		/* FALL THROUGH */
+			FALLTHROUGH;
 		case 1:
 			/* Aircraft breakdowns end only when arriving at the airport */
 			if (this->type == VEH_AIRCRAFT) return false;
@@ -1692,7 +1748,7 @@ bool Vehicle::HandleBreakdown()
 					}
 				}
 			}
-			return (this->breakdown_type == BREAKDOWN_CRITICAL || this->breakdown_type == BREAKDOWN_EM_STOP);
+			return (this->breakdown_type == BREAKDOWN_CRITICAL || this->breakdown_type == BREAKDOWN_EM_STOP || this->breakdown_type == BREAKDOWN_RV_CRASH);
 
 		default:
 			if (!this->current_order.IsType(OT_LOADING)) this->breakdown_ctr--;
@@ -2846,6 +2902,9 @@ CommandCost Vehicle::SendToDepot(DoCommandFlag flags, DepotCommand command, Tile
 				this->current_order.MakeDummy();
 				SetWindowWidgetDirty(WC_VEHICLE_VIEW, this->index, WID_VV_START_STOP);
 			}
+
+			/* prevent any attempt to update timetable for current order, as actual travel time will be incorrect due to depot command */
+			this->cur_timetable_order_index = INVALID_VEH_ORDER_ID;
 		}
 		return CommandCost();
 	}
@@ -3295,10 +3354,11 @@ void Vehicle::RemoveFromShared()
 	if (this->next_shared != NULL) this->next_shared->previous_shared = this->previous_shared;
 
 
-	if (this->orders.list->GetNumVehicles() == 1) {
+	if (this->orders.list->GetNumVehicles() == 1) InvalidateVehicleOrder(this->FirstShared(), VIWD_MODIFY_ORDERS);
+
+	if (this->orders.list->GetNumVehicles() == 1 && !_settings_client.gui.enable_single_veh_shared_order_gui) {
 		/* When there is only one vehicle, remove the shared order list window. */
 		DeleteWindowById(GetWindowClassForVehicleType(this->type), vli.Pack());
-		InvalidateVehicleOrder(this->FirstShared(), 0);
 	} else if (were_first) {
 		/* If we were the first one, update to the new first one.
 		 * Note: FirstShared() is already the new first */

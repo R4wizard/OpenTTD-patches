@@ -2,6 +2,150 @@
 
 * * *
 
+### v0.22.1 (2017-12-10)
+* Fix not being able to build water industries when removing water is disabled
+* Bump trunk base from r27927 to r27935 (includes trunk fix for right mouse scrolling on recent Windows 10 update)
+
+### v0.22.0 (2017-10-17)
+* Template-based train replacement:
+  * Fix crash when creating template vehicle in some cases
+* Fix crash in bootstrap mode (base graphics not installed yet) when attempting to perform keyboard scrolling
+* Fix crash involving freeing of NewGRF modified airport data
+* Fix timetabled full-load order warning being shown for non station orders in timetable window
+* Fix not being allowed to build docks or ship depots, when removing sea/rivers is disabled
+* Fix incorrect scheduling of linkgraph jobs with a large number of nodes which caused poor performance
+* Add support for multiple docks per station
+* Add show passenger and show freight buttons to departure window
+* Add cargo type list filter to vehicle list windows, controlled by a setting
+* Bump trunk base from r27912 to r27927
+
+### v0.21.0 (2017-09-05)
+* Fix numerical overflow in date display/conversion when using high day lengths
+* Fix assertion when a GRF supplies an invalid sound.
+* Fix flickering when drawing vehicles in viewport, particularly in viewport map mode.
+* Fix possible desync when using scheduled dispatch in multiplayer.
+* Towns:
+  * Add towns build bridges over rails patch (default off).
+  * Add very and extremely slow options to town growth rate setting.
+  * Add setting to scale town growth rate by proportion of town cargo transported.
+* Add setting to disable removing sea/rivers.
+* Programmable signals:
+  * Add UI setting for whether programmable signals shown in UI (default off).
+  * Remove programmable signals from ctrl-click signal type cycling.
+* Add warning/info messages to timetable window.
+* Add ctrl+click on shared list button in order/timetable window to add single vehicle to a new group.
+* Move some settings in interface category of settings window.
+* Add Korean translations by kiwitreekor.
+* Add German translations by Auge and kruemelmagic.
+* Bump trunk base from r27891 to r27912
+
+### v0.20.1 (2017-07-27)
+* Scheduled dispatch:
+  * Fix hang when decloning vehicle orders.
+  * Fix crash when cloning vehicle with no orders.
+  * Improve arrival/departure time prediction in departure board.
+* Fix sending money to companies in single-player mode.
+* Fix circumstances in which PBS reservations are made across level crossings when improved level crossing safety is enabled, in edge cases involving train reversing and non-PBS signal blocks.
+* Fix incorrect unit conversion factor when calculating power and acceleration in improved breakdowns reduced power breakdowns.
+* Add Korean translations by kiwitreekor.
+* Bump trunk base from r27886 to r27891
+
+### v0.20.0 (2017-06-25)
+* Fix excessive cost of building long rail tunnels.
+* Fix not being able to enter 00:00 as a timetable start time.
+* Fix trams not reversing on road custom bridge heads where tram tracks end on the bridge head in the direction of the bridge.
+* Fix AIs unintentionally building custom bridge heads.
+* Add patch: scheduled dispatch feature
+* Add support for loading SpringPP v2.3, v2.4 savegames.
+* Routing restrictions: Add program append GUI button.
+* Increase maximum permitted depot and station name lengths.
+* Trains now break down after colliding with a road vehicle.
+* Add Korean translations by TELK.
+* Bump trunk base from r27870 to r27886
+
+### v0.19.0 (2017-05-10)
+* Fix crashes and non-functionality with non-broadcast network chat, regression from v0.18.0.
+* Fix crash when using unrelated buttons in timetable window when also inputting a numeric value.
+* Template-based train replacement:
+  * Fix crash when build and refitting template trains.
+* Viewport:
+  * Fix graphical glitches with re-drawing viewport order lines in some circumstances.
+  * Fix viewport tooltips not being cleared when scrolling using the keyboard.
+* Level crossings:
+  * Prevent road vehicles from being stopped on level crossings.
+  * Add setting to enable improved level crossing safety (default off).
+* Routing restrictions:
+  * Show routing restriction and/or programmable signal windows when ctrl-clicking signal.
+  * Add advanced features: wait at PBS signal, and slots.
+* Add setting for alternative transfer payment mode (default off). Calculate leg payment as a journey from the source to the transfer station, minus transfers.
+* Fix company finance window being too small when first opened.
+* Fix build issues on MacOS/OSX.
+* Add Korean translations by TELK.
+* Bump trunk base from r27846 to r27870
+
+### v0.18.0 (2017-04-04)
+* Fix incorrect behaviour and crashes with custom bridge heads on steep slopes.
+* Fix day length not being reset to 1 when loading pre day-length savegames.
+* Signals on bridges/tunnels:
+  * Fix bridge/tunnel exit PBS signals never being set to green.
+* Routing restrictions:
+  * Fix evaluation of PBS entry signal conditional after reserve through.
+  * Fix removal of PBS entry signal conditional instruction.
+  * Add buttons to GUI to move instructions up/down.
+  * Allow shallow-removing conditional blocks by use of ctrl+click.
+  * Implement instruction scroll-to for PBS entry signal conditional.
+* Template-based train replacement:
+  * Assume that virtual vehicles are on a suitably powered railtype.
+  * Fix virtual vehicles not having their build year set, which caused incorrect properties with some NewGRF sets.
+* Enhanced viewport plans:
+  * Fix various alignment issues in plans window.
+  * Add a show all button.
+  * Add ctrl+click to scroll to plan.
+* Fix height above sea-level in measurement tool.
+* Add chunnel patch (tunnels under bodies of water).
+* Add minimum town distance patch.
+* Add give money to company patch.
+* Bump trunk base from r27747 to r27846
+
+### v0.17.2 (2017-02-22)
+* Fix crash due to articulated trams decoupling when doing a U-turn, when the end-of-line was removed mid-way through the turn.
+* Fix wrong calculation of company infrastructure totals for road tunnels, which could cause multiplayer desyncs.
+* Fix crash when removing secondary road type from tunnel.
+* Fix crash and/or multiplayer desync after updating orders of vehicles which refer to stations/depots owned by a company which is being deleted.
+* Increase maximum permitted group name length.
+* Improvements to crash logging.
+* Improve performance of linkgraph, and minor other areas.
+* Fix memory leak when aborting linkgraph jobs due to abandoning game.
+* Add Korean translations by kiwitreekor.
+* Bump trunk base from r27743 to r27747
+
+### v0.17.1 (2017-02-14)
+* Fix crash when deleting bridge/tunnel with signals due to company reset/bankruptcy.
+* Fix crash in linkgraph job scheduler when the total estimated cost of all jobs is 0.
+* Fix crash when using build and refit with NewGRF sets with unpredicatable/dynamic refit costs.
+* Fix support for increased number of NewGRFs in single player.
+
+### v0.17.0 (2017-02-07)
+* Template-based train replacement:
+  * Fix crash on load/join after a company which owns templates goes bankrupt or is bought out.
+  * Fix incorrect cost estimates in GUI for templates.
+* Fix go to nearest depot and halt orders, not halting.
+* Fix vehicle breakdown repair cost being paid when vehicle is being auto-replaced.
+* Fix inverted condition for cargo waiting conditional order.
+* Fix trains on adjacent non-connected tiles being able to crash into each other.
+* Fix various UI/display issues with group collapsing.
+* Fix various issues for cargo type orders in multiplayer.
+* Fix lifetime profit not being fully reset when renewing vehicle.
+* Fix vehicle list windows erroneously including sort by length for ships and aircraft, which caused a crash when used.
+* Minor fix: more fully clear timetable state when clearing timetable automation.
+* Minor fix: increase cost of removing secondary road-type from bridges/tunnels to correct amount.
+* Add custom bridge heads for road bridges.
+* Increase maximum setting limits for per-company vehicle-type limits.
+* Increase maximum permitted vehicle name length.
+* Signals on tunnel/bridges are now included in company infrastructure stats.
+* Add a natural sort function to use if not compiling with ICU.
+* Bump trunk base from r27719 to r27743
+
 ### v0.16.1 (2017-01-05)
 * Fix hang which could occur when using conditional orders and cargodest.
 * Fix vehicle repair costs patch, and change cost algorithm to avoid excessive costs.
@@ -127,7 +271,7 @@
 * Allow changing the timetabled waiting time for all of a vehicle's orders at once.
 * Run tile animations at the normal rate regardless of day length factor.
 * Routing restrictions:
-  * Fix unreserving through a green PBS signal not setting the state to red.  
+  * Fix unreserving through a green PBS signal not setting the state to red.
     This also fixes unsuccessful reservation attempts though a reserve-through signal erroneously leaving the signal set to green.
 * Infrastructure sharing:
   * Add company settings to enable competitors to buy/renew vehicles in this company's depots.
@@ -328,7 +472,7 @@
 * Pause the game instead of blocking when cargo dest link graph jobs lag.
 * Update routing restrictions patch:
   * Program GUI changes to make 'or if' conditions easier to add, remove and use.
-  * Add a 'reserve through' program command.  
+  * Add a 'reserve through' program command.
     If a restricted PBS signal uses this command, PBS reservations which would otherwise stop at this signal instead continue through it to the next signal/waiting point. In effect this allows the 'safe waiting point' property of a PBS signal to be conditionally turned off.
   * Improvements to the correctness and thoroughness of the program validator.
 * Bump trunk base from r27389 to r27394

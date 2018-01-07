@@ -21,6 +21,7 @@
 #include "cheat_type.h"
 #include "genworld.h"
 #include "tree_map.h"
+#include "tunnel_map.h"
 #include "newgrf_cargo.h"
 #include "newgrf_debug.h"
 #include "newgrf_industrytiles.h"
@@ -491,7 +492,12 @@ static CommandCost ClearTile_Industry(TileIndex tile, DoCommandFlag flags)
 	return CommandCost(EXPENSES_CONSTRUCTION, indspec->GetRemovalCost());
 }
 
-static void TransportIndustryGoods(TileIndex tile)
+/**
+ * Move produced cargo from industry to nearby stations.
+ * @param tile Industry tile
+ * @return true if any cargo was moved.
+ */
+static bool TransportIndustryGoods(TileIndex tile)
 {
 	Industry *i = Industry::GetByTile(tile);
 	const IndustrySpec *indspec = GetIndustrySpec(i->type);
@@ -516,16 +522,7 @@ static void TransportIndustryGoods(TileIndex tile)
 		}
 	}
 
-	if (moved_cargo && !StartStopIndustryTileAnimation(i, IAT_INDUSTRY_DISTRIBUTES_CARGO)) {
-		uint newgfx = GetIndustryTileSpec(GetIndustryGfx(tile))->anim_production;
-
-		if (newgfx != INDUSTRYTILE_NOANIM) {
-			ResetIndustryConstructionStage(tile);
-			SetIndustryCompleted(tile);
-			SetIndustryGfx(tile, newgfx);
-			MarkTileDirtyByTile(tile, ZOOM_LVL_DRAW_MAP);
-		}
-	}
+	return moved_cargo;
 }
 
 
@@ -810,7 +807,17 @@ static void TileLoop_Industry(TileIndex tile)
 
 	if (_game_mode == GM_EDITOR) return;
 
-	TransportIndustryGoods(tile);
+	if (TransportIndustryGoods(tile) && !StartStopIndustryTileAnimation(Industry::GetByTile(tile), IAT_INDUSTRY_DISTRIBUTES_CARGO)) {
+		uint newgfx = GetIndustryTileSpec(GetIndustryGfx(tile))->anim_production;
+
+		if (newgfx != INDUSTRYTILE_NOANIM) {
+			ResetIndustryConstructionStage(tile);
+			SetIndustryCompleted(tile);
+			SetIndustryGfx(tile, newgfx);
+			MarkTileDirtyByTile(tile, ZOOM_LVL_DRAW_MAP);
+			return;
+		}
+	}
 
 	if (StartStopIndustryTileAnimation(tile, IAT_TILELOOP)) return;
 
@@ -1383,7 +1390,7 @@ static CommandCost CheckIfIndustryTilesAreFree(TileIndex tile, const IndustryTil
 		}
 
 		if (gfx == GFX_WATERTILE_SPECIALCHECK) {
-			if (!IsTileType(cur_tile, MP_WATER) ||
+			if (!IsWaterTile(cur_tile) ||
 					!IsTileFlat(cur_tile)) {
 				return_cmd_error(STR_ERROR_SITE_UNSUITABLE);
 			}
@@ -1422,7 +1429,9 @@ static CommandCost CheckIfIndustryTilesAreFree(TileIndex tile, const IndustryTil
 				if (ret.Failed()) return ret;
 			} else {
 				/* Clear the tiles, but do not affect town ratings */
-				CommandCost ret = DoCommand(cur_tile, 0, 0, DC_AUTO | DC_NO_TEST_TOWN_RATING | DC_NO_MODIFY_TOWN_RATING, CMD_LANDSCAPE_CLEAR);
+				DoCommandFlag flags = DC_AUTO | DC_NO_TEST_TOWN_RATING | DC_NO_MODIFY_TOWN_RATING;
+				if ((ind_behav & INDUSTRYBEH_BUILT_ONWATER) && IsWaterTile(cur_tile)) flags |= DC_ALLOW_REMOVE_WATER;
+				CommandCost ret = DoCommand(cur_tile, 0, 0, flags, CMD_LANDSCAPE_CLEAR);
 
 				if (ret.Failed()) return ret;
 			}
@@ -1456,6 +1465,11 @@ static CommandCost CheckIfIndustryIsAllowed(TileIndex tile, int type, const Town
 	if ((GetIndustrySpec(type)->behaviour & INDUSTRYBEH_ONLY_NEARTOWN) && DistanceMax(t->xy, tile) > 9) {
 		return_cmd_error(STR_ERROR_CAN_ONLY_BE_BUILT_NEAR_TOWN_CENTER);
 	}
+
+	if (type == IT_OIL_RIG &&
+			(IsTunnelInWay(tile, 0) ||
+			IsTunnelInWay(tile + TileDiffXY(0, 1), 0) ||
+			IsTunnelInWay(tile + TileDiffXY(1, 2), 0))) return_cmd_error(STR_ERROR_NO_DRILLING_ABOVE_CHUNNEL);
 
 	return CommandCost();
 }

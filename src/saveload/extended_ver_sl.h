@@ -25,6 +25,7 @@ enum SlXvFeatureIndex {
 	XSLFI_TRACE_RESTRICT_OWNER,                   ///< Trace restrict: train owner test
 	XSLFI_PROG_SIGS,                              ///< programmable signals patch
 	XSLFI_ADJACENT_CROSSINGS,                     ///< Adjacent level crossings closure patch
+	XSLFI_SAFER_CROSSINGS,                        ///< Safer level crossings
 	XSLFI_DEPARTURE_BOARDS,                       ///< Departure boards patch, in ticks mode
 	XSLFI_TIMETABLES_START_TICKS,                 ///< Timetable start time is in ticks, instead of days (from departure boards patch)
 	XSLFI_TOWN_CARGO_ADJ,                         ///< Town cargo adjustment patch
@@ -47,6 +48,12 @@ enum SlXvFeatureIndex {
 	XSLFI_CARGO_TYPE_ORDERS,                      ///< Cargo-specific load/unload order flags
 	XSLFI_EXTENDED_GAMELOG,                       ///< Extended gamelog
 	XSLFI_STATION_CATCHMENT_INC,                  ///< Station catchment radius increase
+	XSLFI_CUSTOM_BRIDGE_HEADS,                    ///< Custom bridge heads
+	XSLFI_CHUNNEL,                                ///< Tunnels under water (channel tunnel)
+	XSLFI_SCHEDULED_DISPATCH,                     ///< Scheduled vehicle dispatching
+	XSLFI_MORE_TOWN_GROWTH_RATES,                 ///< More town growth rates
+	XSLFI_MULTIPLE_DOCKS,                         ///< Multiple docks
+	XSLFI_TIMETABLE_EXTRA,                        ///< Vehicle timetable extra fields
 
 	XSLFI_RIFF_HEADER_60_BIT,                     ///< Size field in RIFF chunk header is 60 bit
 	XSLFI_HEIGHT_8_BIT,                           ///< Map tile height is 8 bit instead of 4 bit, but savegame version may be before this became true in trunk

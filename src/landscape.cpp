@@ -30,10 +30,12 @@
 #include "core/random_func.hpp"
 #include "object_base.h"
 #include "company_func.h"
+#include "tunnelbridge_map.h"
 #include "pathfinder/npf/aystar.h"
 #include "saveload/saveload.h"
+#include "3rdparty/cpp-btree/btree_set.h"
+#include "scope_info.h"
 #include <deque>
-#include <set>
 
 #include "table/strings.h"
 #include "table/sprites.h"
@@ -351,6 +353,8 @@ Slope GetFoundationSlope(TileIndex tile, int *z)
 
 bool HasFoundationNW(TileIndex tile, Slope slope_here, uint z_here)
 {
+	if (IsRoadCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DIAGDIR_NW) return false;
+
 	int z;
 
 	int z_W_here = z_here;
@@ -368,6 +372,8 @@ bool HasFoundationNW(TileIndex tile, Slope slope_here, uint z_here)
 
 bool HasFoundationNE(TileIndex tile, Slope slope_here, uint z_here)
 {
+	if (IsRoadCustomBridgeHeadTile(tile) && GetTunnelBridgeDirection(tile) == DIAGDIR_NE) return false;
+
 	int z;
 
 	int z_E_here = z_here;
@@ -617,7 +623,9 @@ CommandCost CmdLandscapeClear(TileIndex tile, DoCommandFlag flags, uint32 p1, ui
 	if ((flags & DC_FORCE_CLEAR_TILE) && HasTileWaterClass(tile) && IsTileOnWater(tile) && !IsWaterTile(tile) && !IsCoastTile(tile)) {
 		if ((flags & DC_AUTO) && GetWaterClass(tile) == WATER_CLASS_CANAL) return_cmd_error(STR_ERROR_MUST_DEMOLISH_CANAL_FIRST);
 		do_clear = true;
-		cost.AddCost(GetWaterClass(tile) == WATER_CLASS_CANAL ? _price[PR_CLEAR_CANAL] : _price[PR_CLEAR_WATER]);
+		const bool is_canal = GetWaterClass(tile) == WATER_CLASS_CANAL;
+		if (!is_canal && _game_mode != GM_EDITOR && !_settings_game.construction.enable_remove_water && !(flags & DC_ALLOW_REMOVE_WATER)) return_cmd_error(STR_ERROR_CAN_T_BUILD_ON_WATER);
+		cost.AddCost(is_canal ? _price[PR_CLEAR_CANAL] : _price[PR_CLEAR_WATER]);
 	}
 
 	Company *c = (flags & (DC_AUTO | DC_BANKRUPT)) ? NULL : Company::GetIfValid(_current_company);
@@ -739,6 +747,8 @@ void RunTileLoop()
 	TileIndex tile = _cur_tileloop_tile;
 	/* The LFSR cannot have a zeroed state. */
 	assert(tile != 0);
+
+	SCOPE_INFO_FMT([&], "RunTileLoop: tile: %dx%d", TileX(tile), TileY(tile));
 
 	/* Manually update tile 0 every 256 ticks - the LFSR never iterates over it itself.  */
 	if (_tick_counter % 256 == 0) {
@@ -1114,7 +1124,7 @@ static bool FlowRiver(TileIndex spring, TileIndex begin)
 	uint height = TileHeight(begin);
 	if (IsWaterTile(begin)) return DistanceManhattan(spring, begin) > _settings_game.game_creation.min_river_length;
 
-	std::set<TileIndex> marks;
+	btree::btree_set<TileIndex> marks;
 	SET_MARK(begin);
 
 	/* Breadth first search for the closest tile we can flow down to. */
@@ -1151,7 +1161,7 @@ static bool FlowRiver(TileIndex spring, TileIndex begin)
 		/* Maybe we can make a lake. Find the Nth of the considered tiles. */
 		TileIndex lakeCenter = 0;
 		int i = RandomRange(count - 1) + 1;
-		std::set<TileIndex>::const_iterator cit = marks.begin();
+		btree::btree_set<TileIndex>::const_iterator cit = marks.begin();
 		while (--i) cit++;
 		lakeCenter = *cit;
 

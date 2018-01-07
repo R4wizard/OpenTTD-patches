@@ -1,4 +1,4 @@
-## JGR's Patchpack version 0.16.1
+## JGR's Patchpack version 0.22.1
 
 This is a collection of patches applied to [OpenTTD](http://www.openttd.org/)
 
@@ -28,7 +28,8 @@ See [jgrpp-changelog.md](jgrpp-changelog.md) for changelog.
   A version of this feature rebased onto [Cirdan's new map features branch](http://repo.or.cz/w/openttd/fttd.git) is in the *tracerestrict-cirdan* branch, see [this thread](http://www.tt-forums.net/viewtopic.php?f=33&t=58420)
 
 * Programmable signals: [imported](http://www.tt-forums.net/viewtopic.php?f=33&t=47690)  
-  This includes additions to the patch from the [Spring 2013 Patch Pack](http://www.tt-forums.net/viewtopic.php?f=33&t=66892)
+  This includes additions to the patch from the [Spring 2013 Patch Pack](http://www.tt-forums.net/viewtopic.php?f=33&t=66892)  
+  These are not shown in the build signal window by default.
 
 * Upgrade airports: [imported](http://www.tt-forums.net/viewtopic.php?f=33&t=35867)
 
@@ -163,11 +164,44 @@ See [jgrpp-changelog.md](jgrpp-changelog.md) for changelog.
 
 * Add a setting to increase the station catchment radius (added in v0.16.0)
 
+* Custom bridge heads for road bridges (added in v0.17.0)
+
+* Chunnels (tunnels under bodies of water) [imported](https://www.tt-forums.net/viewtopic.php?f=33&t=41775) (added in v0.18.0)  
+  This is enabled by a setting (off by default).
+
+* Give money to company, instead of player [imported](https://www.tt-forums.net/viewtopic.php?f=33&t=63899) (added in v0.18.0)  
+  This has been modified to broadcast money transfer notifications to all players.
+
+* Minimum town distance [imported](https://www.tt-forums.net/viewtopic.php?f=33&t=33625) (added in v0.18.0)
+
+* Add setting for alternative transfer payment mode. (added in v0.19.0)  
+  Calculate leg payment as a journey from the source to the transfer station, minus previous transfers.  
+  This is to more fairly distribute profits between transfer vehicles and avoid large negative payments on the final leg.
+
+* Level crossing improvements (added in v0.19.0)  
+  * Prevent road vehicles from being stopped on level crossings.  
+  * Add setting to enable improved level crossing safety.
+
+* Scheduled dispatch [imported](https://github.com/innocenat/OpenTTD-patches/tree/scheduled-dispatch-sx) (added in v0.20.0)
+
+* Add a setting to disable removing sea/rivers (added in v0.21.0)
+
+* Town growth  
+  * Towns build bridges over rails [imported](https://www.tt-forums.net/viewtopic.php?f=33t=76052) (added in v0.21.0)  
+  * Add very and extremely slow options to town growth rate setting. (added in v0.21.0)  
+  * Add a setting to scale town growth rate by proportion of town cargo transported. (added in v0.21.0)
+
 * Performance improvements  
   * Improve dedicated server performance. Up to approximately 2.5x faster. (added in v0.8.1)  
-  * Improve cargodest link graph calculation performance. Up to approximately 33% faster. (added in v0.8.1)  
+  * Improve cargodest link graph calculation performance. Up to approximately 2x faster. (~1.3x faster in v0.8.1, further improvements in v0.17.2)  
   * Add a 32bpp SSE2 palette animator. This is ~4x faster than the non-accelerated palette animator. (added in v0.9.0)  
   * Various minor changes (see changelog).
+
+* Multiple docs per station [imported](https://github.com/KeldorKatarn/OpenTTD_PatchPack/tree/feature/multiple_docks) (added in v0.22.0)
+
+* Cargo type filter in vehicle list windows [imported](https://www.tt-forums.net/viewtopic.php?f=33&t=77147) (added in v0.22.0)  
+  This has been modified to support more windows and more cargo options.  
+  This is enabled by a setting (on by default).
 
 * Save/load and savegame format changes  
   * Various changes to improve handling of savegames which use features not in trunk.  
@@ -175,17 +209,24 @@ See [jgrpp-changelog.md](jgrpp-changelog.md) for changelog.
   * Savegames from trunk up to the last savegame version which has been merged into this branch (*jgrpp*) should be loadable in this patchpack.  
   * Savegames from other branches which use the save/load code in the *save_ext* branch (usually suffixed: *-sx*) which are also merged into this branch (*jgrpp*), or where the added feature is marked as discardable/ignorable, should be loadable in this patchpack.  
   * Savegames from other patched versions are not loadable in this patchpack except for savegames from the *tracerestrict* branch ([routing restrictions patch](http://www.tt-forums.net/viewtopic.php?f=33&t=73397)),
-    savegames from the [Spring 2013 Patch Pack](http://www.tt-forums.net/viewtopic.php?f=33&t=66892) v2.0, v2.1, v2.2 (subject to caveats, see below).
+    savegames from the [Spring 2013 Patch Pack](http://www.tt-forums.net/viewtopic.php?f=33&t=66892) v2.0 - v2.4 (subject to caveats, see below).
 
 * Miscellaneous  
   * Various improvements to the crash logger.  
   * Label threads with a descriptive name on supported Unixy platforms. (added in v0.8.1)  
   * Adjust cargo dest link graph job scheduling algorithm to improve responsiveness. (added in v0.16.0)  
   * Add hover tool-tips, and improve visual contrast of cargo labels, in cargo dest graph legend window. (added in v0.16.0)  
-  * Add shift-clicking on vehicle depot button to select specific depot. (added in v0.16.1)
+  * Add shift-clicking on vehicle depot button to select specific depot. (added in v0.16.1)  
+  * Increase maximum setting limits for per-company vehicle-type limits. (added in v0.17.0)  
+  * Increase maximum permitted vehicle name length (added in v0.17.0), vehicle group name length (added in v0.17.2), and depot/station name lengths (added in v0.20.0).  
+  * Trains break down after colliding with a road vehicle. (added in v0.20.0).  
+  * Add warning/info messages to timetable window. (added in v0.21.0).  
+  * Add ctrl+click on shared list button in order/timetable window to add single vehicle to a new group. (added in v0.21.0).  
+  * Various minor fixes, see changelog.
 
 * Translations  
-  * German (by Auge): including vehicle group info, vehicle details window, the zoning toolbar, and settings for improved breakdowns and adjacent level crossings.
+  * German (by Auge and Kruemelchen)  
+  * Korean (by kiwitreekor and TELK)
 
 
 #### Caveats for loading savegames from the [Spring 2013 Patch Pack](http://www.tt-forums.net/viewtopic.php?f=33&t=66892):  

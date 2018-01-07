@@ -534,6 +534,7 @@ struct GameOptionsWindow : Window {
 				UpdateCursorSize();
 				UpdateFontHeightCache();
 				LoadStringWidthTable();
+				UpdateAllVirtCoords();
 				break;
 
 			case WID_GO_BASE_GRF_DROPDOWN:
@@ -1506,6 +1507,7 @@ static SettingsContainer &GetSettingsTree()
 				general->Add(new SettingEntry("gui.errmsg_duration"));
 				general->Add(new SettingEntry("gui.window_snap_radius"));
 				general->Add(new SettingEntry("gui.window_soft_limit"));
+				general->Add(new SettingEntry("gui.right_mouse_wnd_close"));
 			}
 
 			SettingsPage *viewports = interface->Add(new SettingsPage(STR_CONFIG_SETTING_INTERFACE_VIEWPORTS));
@@ -1583,19 +1585,30 @@ static SettingsContainer &GetSettingsTree()
 				wallclock->Add(new SettingEntry("gui.clock_offset"));
 			}
 
+			SettingsPage *timetable = interface->Add(new SettingsPage(STR_CONFIG_SETTING_INTERFACE_TIMETABLE));
+			{
+				timetable->Add(new SettingEntry("gui.timetable_in_ticks"));
+				timetable->Add(new SettingEntry("gui.timetable_leftover_ticks"));
+				timetable->Add(new SettingEntry("gui.timetable_arrival_departure"));
+			}
+
+			SettingsPage *advsig = interface->Add(new SettingsPage(STR_CONFIG_SETTING_INTERFACE_ADV_SIGNALS));
+			{
+				advsig->Add(new SettingEntry("gui.show_progsig_ui"));
+				advsig->Add(new SettingEntry("gui.show_adv_tracerestrict_features"));
+			}
+
 			interface->Add(new SettingEntry("gui.autosave"));
 			interface->Add(new SettingEntry("gui.toolbar_pos"));
 			interface->Add(new SettingEntry("gui.statusbar_pos"));
 			interface->Add(new SettingEntry("gui.prefer_teamchat"));
 			interface->Add(new SettingEntry("gui.advanced_vehicle_list"));
-			interface->Add(new SettingEntry("gui.timetable_in_ticks"));
-			interface->Add(new SettingEntry("gui.timetable_leftover_ticks"));
-			interface->Add(new SettingEntry("gui.timetable_arrival_departure"));
 			interface->Add(new SettingEntry("gui.expenses_layout"));
 			interface->Add(new SettingEntry("gui.show_train_length_in_details"));
 			interface->Add(new SettingEntry("gui.show_train_weight_ratios_in_details"));
 			interface->Add(new SettingEntry("gui.show_vehicle_group_in_details"));
 			interface->Add(new SettingEntry("gui.show_vehicle_list_company_colour"));
+			interface->Add(new SettingEntry("gui.show_veh_list_cargo_filter"));
 		}
 
 		SettingsPage *advisors = main->Add(new SettingsPage(STR_CONFIG_SETTING_ADVISORS));
@@ -1657,6 +1670,7 @@ static SettingsContainer &GetSettingsTree()
 			accounting->Add(new SettingEntry("difficulty.max_loan"));
 			accounting->Add(new SettingEntry("difficulty.subsidy_multiplier"));
 			accounting->Add(new SettingEntry("economy.feeder_payment_share"));
+			accounting->Add(new SettingEntry("economy.feeder_payment_src_station"));
 			accounting->Add(new SettingEntry("economy.infrastructure_maintenance"));
 			accounting->Add(new SettingEntry("difficulty.vehicle_costs"));
 			accounting->Add(new SettingEntry("difficulty.construction_cost"));
@@ -1690,6 +1704,7 @@ static SettingsContainer &GetSettingsTree()
 			vehicles->Add(new SettingEntry("order.no_servicing_if_no_breakdowns"));
 			vehicles->Add(new SettingEntry("order.serviceathelipad"));
 			vehicles->Add(new SettingEntry("vehicle.adjacent_crossings"));
+			vehicles->Add(new SettingEntry("vehicle.safer_crossings"));
 		}
 
 		SettingsPage *limitations = main->Add(new SettingsPage(STR_CONFIG_SETTING_LIMITATIONS));
@@ -1701,6 +1716,7 @@ static SettingsContainer &GetSettingsTree()
 			limitations->Add(new SettingEntry("construction.max_bridge_length"));
 			limitations->Add(new SettingEntry("construction.max_bridge_height"));
 			limitations->Add(new SettingEntry("construction.max_tunnel_length"));
+			limitations->Add(new SettingEntry("construction.chunnel"));
 			limitations->Add(new SettingEntry("station.never_expire_airports"));
 			limitations->Add(new SettingEntry("vehicle.never_expire_vehicles"));
 			limitations->Add(new SettingEntry("vehicle.max_trains"));
@@ -1715,6 +1731,8 @@ static SettingsContainer &GetSettingsTree()
 			limitations->Add(new SettingEntry("vehicle.disable_elrails"));
 			limitations->Add(new SettingEntry("construction.maximum_signal_evaluations"));
 			limitations->Add(new SettingEntry("construction.enable_build_river"));
+			limitations->Add(new SettingEntry("construction.enable_remove_water"));
+			limitations->Add(new SettingEntry("construction.road_custom_bridge_heads"));
 		}
 
 		SettingsPage *disasters = main->Add(new SettingsPage(STR_CONFIG_SETTING_ACCIDENTS));
@@ -1743,6 +1761,7 @@ static SettingsContainer &GetSettingsTree()
 			genworld->Add(new SettingEntry("economy.larger_towns"));
 			genworld->Add(new SettingEntry("economy.initial_city_size"));
 			genworld->Add(new SettingEntry("economy.town_layout"));
+			genworld->Add(new SettingEntry("economy.town_min_distance"));
 			genworld->Add(new SettingEntry("difficulty.industry_density"));
 			genworld->Add(new SettingEntry("gui.pause_on_newgame"));
 		}
@@ -1762,11 +1781,13 @@ static SettingsContainer &GetSettingsTree()
 			SettingsPage *towns = environment->Add(new SettingsPage(STR_CONFIG_SETTING_ENVIRONMENT_TOWNS));
 			{
 				towns->Add(new SettingEntry("economy.town_growth_rate"));
+				towns->Add(new SettingEntry("economy.town_growth_cargo_transported"));
 				towns->Add(new SettingEntry("economy.allow_town_roads"));
 				towns->Add(new SettingEntry("economy.allow_town_level_crossings"));
 				towns->Add(new SettingEntry("economy.found_town"));
 				towns->Add(new SettingEntry("economy.town_cargo_scale_factor"));
 				towns->Add(new SettingEntry("economy.random_road_reconstruction"));
+				towns->Add(new SettingEntry("economy.town_bridge_over_rail"));
 			}
 
 			SettingsPage *industries = environment->Add(new SettingsPage(STR_CONFIG_SETTING_ENVIRONMENT_INDUSTRIES));
@@ -2183,7 +2204,9 @@ struct GameSettingsWindow : Window {
 
 					DropDownList *list = new DropDownList();
 					for (int i = sdb->min; i <= (int)sdb->max; i++) {
-						*list->Append() = new DropDownListStringItem(sdb->str_val + i - sdb->min, i, false);
+						int val = sd->orderproc ? sd->orderproc(i - sdb->min) : i;
+						assert_msg(val >= sdb->min && val <= (int)sdb->max, "min: %d, max: %d, val: %d", sdb->min, sdb->max, val);
+						*list->Append() = new DropDownListStringItem(sdb->str_val + val - sdb->min, val, false);
 					}
 
 					ShowDropDownListAt(this, list, value, -1, wi_rect, COLOUR_ORANGE, true);

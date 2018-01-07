@@ -229,6 +229,7 @@ enum Commands {
 	CMD_PLANT_TREE,                   ///< plant a tree
 
 	CMD_BUILD_VEHICLE,                ///< build a vehicle
+	CMD_BUILD_VEHICLE_NT,             ///< build a vehicle (no test)
 	CMD_SELL_VEHICLE,                 ///< sell a vehicle
 	CMD_REFIT_VEHICLE,                ///< refit the cargo space of a vehicle
 	CMD_SEND_VEHICLE_TO_DEPOT,        ///< send a vehicle to a depot
@@ -370,11 +371,24 @@ enum Commands {
 	CMD_OPEN_CLOSE_AIRPORT,           ///< open/close an airport to incoming aircraft
 
 	CMD_PROGRAM_TRACERESTRICT_SIGNAL, ///< modify a signal tracerestrict program
+	CMD_CREATE_TRACERESTRICT_SLOT,    ///< create a tracerestrict slot
+	CMD_ALTER_TRACERESTRICT_SLOT,     ///< alter a tracerestrict slot
+	CMD_DELETE_TRACERESTRICT_SLOT,    ///< delete a tracerestrict slot
+	CMD_ADD_VEHICLE_TRACERESTRICT_SLOT,    ///< add a vehicle to a tracerestrict slot
+	CMD_REMOVE_VEHICLE_TRACERESTRICT_SLOT, ///< remove a vehicle from a tracerestrict slot
 
 	CMD_INSERT_SIGNAL_INSTRUCTION,    ///< insert a signal instruction
 	CMD_MODIFY_SIGNAL_INSTRUCTION,    ///< modifies a signal instruction
 	CMD_REMOVE_SIGNAL_INSTRUCTION,    ///< removes a signal instruction
 	CMD_SIGNAL_PROGRAM_MGMT,          ///< removes a signal program management command
+
+	CMD_SCHEDULED_DISPATCH,                     ///< scheduled dispatch start
+	CMD_SCHEDULED_DISPATCH_ADD,                 ///< scheduled dispatch add
+	CMD_SCHEDULED_DISPATCH_REMOVE,              ///< scheduled dispatch remove
+	CMD_SCHEDULED_DISPATCH_SET_DURATION,        ///< scheduled dispatch set schedule duration
+	CMD_SCHEDULED_DISPATCH_SET_START_DATE,      ///< scheduled dispatch set start date
+	CMD_SCHEDULED_DISPATCH_SET_DELAY,           ///< scheduled dispatch set maximum allow delay
+	CMD_SCHEDULED_DISPATCH_RESET_LAST_DISPATCH, ///< scheduled dispatch reset last dispatch date
 
 	CMD_ADD_PLAN,
 	CMD_ADD_PLAN_LINE,
@@ -406,6 +420,7 @@ enum DoCommandFlag {
 	DC_ALL_TILES             = 0x200, ///< allow this command also on MP_VOID tiles
 	DC_NO_MODIFY_TOWN_RATING = 0x400, ///< do not change town rating
 	DC_FORCE_CLEAR_TILE      = 0x800, ///< do not only remove the object on the tile, but also clear any water left on it
+	DC_ALLOW_REMOVE_WATER    = 0x1000,///< always allow removing water
 };
 DECLARE_ENUM_AS_BIT_SET(DoCommandFlag)
 

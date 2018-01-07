@@ -21,6 +21,7 @@
 #include "../../gamelog.h"
 #include "../../saveload/saveload.h"
 #include "../../video/video_driver.hpp"
+#include "../../openttd.h"
 #if defined(WITH_DEMANGLE)
 #include <cxxabi.h>
 #endif
@@ -62,7 +63,7 @@ public:
 
 
 	/** Buffer for the generated crash log */
-	char crashlog[65536];
+	char crashlog[65536 * 4];
 	/** Buffer for the filename of the crash log */
 	char crashlog_filename[MAX_PATH];
 	/** Buffer for the filename of the crash dump */
@@ -532,25 +533,19 @@ void *_safe_esp = NULL;
 
 static LONG WINAPI ExceptionHandler(EXCEPTION_POINTERS *ep)
 {
+	_in_event_loop_post_crash = true;
+
 	if (CrashLogWindows::current != NULL) {
 		CrashLog::AfterCrashLogCleanup();
 		ExitProcess(2);
 	}
 
-	if (GamelogTestEmergency()) {
-		static const TCHAR _emergency_crash[] =
-			_T("A serious fault condition occurred in the game. The game will shut down.\n")
-			_T("As you loaded an emergency savegame no crash information will be generated.\n");
+	const char *abort_reason = CrashLog::GetAbortCrashlogReason();
+	if (abort_reason != NULL) {
+		TCHAR _emergency_crash[512];
+		_sntprintf(_emergency_crash, lengthof(_emergency_crash),
+				_T("A serious fault condition occurred in the game. The game will shut down.\n"), OTTD2FS(abort_reason));
 		MessageBox(NULL, _emergency_crash, _T("Fatal Application Failure"), MB_ICONERROR);
-		ExitProcess(3);
-	}
-
-	if (SaveloadCrashWithMissingNewGRFs()) {
-		static const TCHAR _saveload_crash[] =
-			_T("A serious fault condition occurred in the game. The game will shut down.\n")
-			_T("As you loaded an savegame for which you do not have the required NewGRFs\n")
-			_T("no crash information will be generated.\n");
-		MessageBox(NULL, _saveload_crash, _T("Fatal Application Failure"), MB_ICONERROR);
 		ExitProcess(3);
 	}
 
@@ -621,8 +616,9 @@ static bool _expanded;
 
 static const TCHAR _crash_desc[] =
 	_T("A serious fault condition occurred in the game. The game will shut down.\n")
-	_T("Please send the crash information and the crash.dmp file (if any) to the developers.\n")
-	_T("This will greatly help debugging. The correct place to do this is http://bugs.openttd.org. ")
+	_T("Please send the crash information and the crash.dmp file (if any) to the patchpack developer.\n")
+	_T("This will greatly help debugging. The correct place to do this is https://www.tt-forums.net/viewtopic.php?f=33&t=73469")
+	_T(" or https://github.com/JGRennison/OpenTTD-patches\n")
 	_T("The information contained in the report is displayed below.\n")
 	_T("Press \"Emergency save\" to attempt saving the game. Generated file(s):\n")
 	_T("%s");

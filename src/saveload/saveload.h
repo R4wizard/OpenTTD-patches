@@ -52,7 +52,7 @@ enum SavegameType {
 extern FileToSaveLoad _file_to_saveload;
 
 void GenerateDefaultSaveName(char *buf, const char *last);
-void SetSaveLoadError(uint16 str);
+void SetSaveLoadError(StringID str);
 const char *GetSaveLoadErrorString();
 SaveOrLoadResult SaveOrLoad(const char *filename, SaveLoadOperation fop, DetailedFileType dft, Subdirectory sb, bool threaded = true);
 void WaitTillSaved();
@@ -81,19 +81,20 @@ struct NullStruct {
 
 /** Type of reference (#SLE_REF, #SLE_CONDREF). */
 enum SLRefType {
-	REF_ORDER          =  0, ///< Load/save a reference to an order.
-	REF_VEHICLE        =  1, ///< Load/save a reference to a vehicle.
-	REF_STATION        =  2, ///< Load/save a reference to a station.
-	REF_TOWN           =  3, ///< Load/save a reference to a town.
-	REF_VEHICLE_OLD    =  4, ///< Load/save an old-style reference to a vehicle (for pre-4.4 savegames).
-	REF_ROADSTOPS      =  5, ///< Load/save a reference to a bus/truck stop.
-	REF_ENGINE_RENEWS  =  6, ///< Load/save a reference to an engine renewal (autoreplace).
-	REF_CARGO_PACKET   =  7, ///< Load/save a reference to a cargo packet.
-	REF_ORDERLIST      =  8, ///< Load/save a reference to an orderlist.
-	REF_STORAGE        =  9, ///< Load/save a reference to a persistent storage.
-	REF_LINK_GRAPH     = 10, ///< Load/save a reference to a link graph.
-	REF_LINK_GRAPH_JOB = 11, ///< Load/save a reference to a link graph job.
-	REF_TEMPLATE_VEHICLE = 12, ///< Load/save a reference to a template vehicle
+	REF_ORDER            =  0,	///< Load/save a reference to an order.
+	REF_VEHICLE          =  1,	///< Load/save a reference to a vehicle.
+	REF_STATION          =  2,	///< Load/save a reference to a station.
+	REF_TOWN             =  3,	///< Load/save a reference to a town.
+	REF_VEHICLE_OLD      =  4,	///< Load/save an old-style reference to a vehicle (for pre-4.4 savegames).
+	REF_ROADSTOPS        =  5,	///< Load/save a reference to a bus/truck stop.
+	REF_ENGINE_RENEWS    =  6,	///< Load/save a reference to an engine renewal (autoreplace).
+	REF_CARGO_PACKET     =  7,	///< Load/save a reference to a cargo packet.
+	REF_ORDERLIST        =  8,	///< Load/save a reference to an orderlist.
+	REF_STORAGE          =  9,	///< Load/save a reference to a persistent storage.
+	REF_LINK_GRAPH       = 10,	///< Load/save a reference to a link graph.
+	REF_LINK_GRAPH_JOB   = 11,	///< Load/save a reference to a link graph job.
+	REF_TEMPLATE_VEHICLE = 12,	///< Load/save a reference to a template vehicle
+	REF_DOCKS            = 13,	///< Load/save a reference to a dock.
 };
 
 /** Highest possible savegame version. */
@@ -171,7 +172,7 @@ enum VarTypes {
 	SLE_INT64        = SLE_FILE_I64 | SLE_VAR_I64,
 	SLE_UINT64       = SLE_FILE_U64 | SLE_VAR_U64,
 	SLE_CHAR         = SLE_FILE_I8  | SLE_VAR_CHAR,
-	SLE_STRINGID     = SLE_FILE_STRINGID | SLE_VAR_U16,
+	SLE_STRINGID     = SLE_FILE_STRINGID | SLE_VAR_U32,
 	SLE_STRINGBUF    = SLE_FILE_STRING   | SLE_VAR_STRB,
 	SLE_STRINGBQUOTE = SLE_FILE_STRING   | SLE_VAR_STRBQ,
 	SLE_STRING       = SLE_FILE_STRING   | SLE_VAR_STR,
@@ -207,10 +208,13 @@ enum SaveLoadTypes {
 	SL_LST         =  4, ///< Save/load a list.
 	SL_DEQ         =  5, ///< Save/load a deque.
 	SL_VEC         =  6, ///< Save/load a vector.
+	SL_STDSTR      =  7, ///< Save/load a std::string.
 	/* non-normal save-load types */
 	SL_WRITEBYTE   =  8,
 	SL_VEH_INCLUDE =  9,
 	SL_ST_INCLUDE  = 10,
+	/* primitive type vector */
+	SL_VARVEC      = 14,
 	SL_END         = 15
 };
 
@@ -301,6 +305,18 @@ typedef SaveLoad SaveLoadGlobVarList;
 #define SLE_CONDSTR(base, variable, type, length, from, to) SLE_CONDSTR_X(base, variable, type, length, from, to, SlXvFeatureTest())
 
 /**
+ * Storage of a std::string in some savegame versions.
+ * @param base     Name of the class or struct containing the string.
+ * @param variable Name of the variable in the class or struct referenced by \a base.
+ * @param type     Storage of the data in memory and in the savegame.
+ * @param from     First savegame version that has the string.
+ * @param to       Last savegame version that has the string.
+ * @param extver   SlXvFeatureTest to test (along with from and to) which savegames have the field
+ */
+#define SLE_CONDSTDSTR_X(base, variable, type, from, to, extver) SLE_GENERAL_X(SL_STDSTR, base, variable, type, 0, from, to, extver)
+#define SLE_CONDSTDSTR(base, variable, type, from, to) SLE_CONDSTDSTR_X(base, variable, type, from, to, SlXvFeatureTest())
+
+/**
  * Storage of a list in some savegame versions.
  * @param base     Name of the class or struct containing the list.
  * @param variable Name of the variable in the class or struct referenced by \a base.
@@ -337,6 +353,18 @@ typedef SaveLoad SaveLoadGlobVarList;
 #define SLE_CONDVEC(base, variable, type, from, to) SLE_CONDVEC_X(base, variable, type, from, to, SlXvFeatureTest())
 
 /**
+ * Storage of a variable vector in some savegame versions.
+ * @param base     Name of the class or struct containing the list.
+ * @param variable Name of the variable in the class or struct referenced by \a base.
+ * @param type     Storage of the data in memory and in the savegame.
+ * @param from     First savegame version that has the list.
+ * @param to       Last savegame version that has the list.
+ * @param extver   SlXvFeatureTest to test (along with from and to) which savegames have the field
+ */
+#define SLE_CONDVARVEC_X(base, variable, type, from, to, extver) SLE_GENERAL_X(SL_VARVEC, base, variable, type, 0, from, to, extver)
+#define SLE_CONDVARVEC(base, variable, type, from, to) SLE_CONDVARVEC_X(base, variable, type, from, to, SlXvFeatureTest())
+
+/**
  * Storage of a variable in every version of a savegame.
  * @param base     Name of the class or struct containing the variable.
  * @param variable Name of the variable in the class or struct referenced by \a base.
@@ -369,6 +397,14 @@ typedef SaveLoad SaveLoadGlobVarList;
  * @param length   Number of elements in the string (only used for fixed size buffers).
  */
 #define SLE_STR(base, variable, type, length) SLE_CONDSTR(base, variable, type, length, 0, SL_MAX_VERSION)
+
+/**
+ * Storage of a std::string in every savegame version.
+ * @param base     Name of the class or struct containing the string.
+ * @param variable Name of the variable in the class or struct referenced by \a base.
+ * @param type     Storage of the data in memory and in the savegame.
+ */
+#define SLE_STDSTR(base, variable, type) SLE_CONDSTDSTR(base, variable, type, 0, SL_MAX_VERSION)
 
 /**
  * Storage of a list in every savegame version.

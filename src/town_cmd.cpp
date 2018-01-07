@@ -1242,14 +1242,14 @@ static bool GrowTownWithBridge(const Town *t, const TileIndex tile, const DiagDi
 	const int delta = TileOffsByDiagDir(bridge_dir);
 
 	if (slope == SLOPE_FLAT) {
-		/* Bridges starting on flat tiles are only allowed when crossing rivers. */
+		/* Bridges starting on flat tiles are only allowed when crossing rivers or rails. */
 		do {
 			if (bridge_length++ >= 4) {
-				/* Allow to cross rivers, not big lakes. */
+				/* Allow to cross rivers, not big lakes, nor large amounts of rails. */
 				return false;
 			}
 			bridge_tile += delta;
-		} while (IsValidTile(bridge_tile) && IsWaterTile(bridge_tile) && !IsSea(bridge_tile));
+		} while (IsValidTile(bridge_tile) && ((IsWaterTile(bridge_tile) && !IsSea(bridge_tile)) || (_settings_game.economy.town_bridge_over_rail && IsPlainRailTile(bridge_tile))));
 	} else {
 		do {
 			if (bridge_length++ >= 11) {
@@ -1257,7 +1257,7 @@ static bool GrowTownWithBridge(const Town *t, const TileIndex tile, const DiagDi
 				return false;
 			}
 			bridge_tile += delta;
-		} while (IsValidTile(bridge_tile) && IsWaterTile(bridge_tile));
+		} while (IsValidTile(bridge_tile) && (IsWaterTile(bridge_tile) || (_settings_game.economy.town_bridge_over_rail && IsPlainRailTile(bridge_tile))));
 	}
 
 	/* no water tiles in between? */
@@ -1404,7 +1404,7 @@ static void GrowTownInTile(TileIndex *tile_ptr, RoadBits cur_rb, DiagDirection t
 
 				case TL_3X3_GRID: // Use 2x2 grid afterwards!
 					GrowTownWithExtraHouse(t1, TileAddByDiagDir(house_tile, target_dir));
-					/* FALL THROUGH */
+					FALLTHROUGH;
 
 				case TL_2X2_GRID:
 					rcmd = GetTownRoadGridElement(t1, tile, target_dir);
@@ -1413,7 +1413,7 @@ static void GrowTownInTile(TileIndex *tile_ptr, RoadBits cur_rb, DiagDirection t
 
 				case TL_BETTER_ROADS: // Use original afterwards!
 					GrowTownWithExtraHouse(t1, TileAddByDiagDir(house_tile, target_dir));
-					/* FALL THROUGH */
+					FALLTHROUGH;
 
 				case TL_ORIGINAL:
 					/* Allow a house at the edge. 60% chance or
@@ -1800,7 +1800,7 @@ static CommandCost TownCanBePlacedHere(TileIndex tile)
 	}
 
 	/* Check distance to all other towns. */
-	if (IsCloseToTown(tile, 20)) {
+	if (IsCloseToTown(tile, _settings_game.economy.town_min_distance)) {
 		return_cmd_error(STR_ERROR_TOO_CLOSE_TO_ANOTHER_TOWN);
 	}
 
@@ -3389,10 +3389,34 @@ static void UpdateTownGrowRate(Town *t)
 
 	/* Use the normal growth rate values if new buildings have been funded in
 	 * this town and the growth rate is set to none. */
-	uint growth_multiplier = _settings_game.economy.town_growth_rate != 0 ? _settings_game.economy.town_growth_rate - 1 : 1;
+	int growth_multiplier;
+	if (_settings_game.economy.town_growth_rate == 0) {
+		growth_multiplier = 1;
+	} else if (_settings_game.economy.town_growth_rate > 0) {
+		growth_multiplier = _settings_game.economy.town_growth_rate - 1;
+	} else {
+		growth_multiplier = _settings_game.economy.town_growth_rate;
+	}
 
-	m >>= growth_multiplier;
+	if (growth_multiplier < 0) {
+		m <<= (-growth_multiplier);
+	} else {
+		m >>= growth_multiplier;
+	}
 	if (t->larger_town) m /= 2;
+
+	if (_settings_game.economy.town_growth_cargo_transported > 0) {
+		uint32 inverse_m = UINT32_MAX / m;
+		auto calculate_cargo_ratio_fix15 = [](const TransportedCargoStat<uint32> &stat) -> uint32 {
+			return stat.old_max ? ((uint64) (stat.old_act << 15)) / stat.old_max : 1 << 15;
+		};
+		uint32 cargo_ratio_fix16 = calculate_cargo_ratio_fix15(t->supplied[CT_PASSENGERS]) + calculate_cargo_ratio_fix15(t->supplied[CT_MAIL]);
+		uint32 cargo_dependant_part = (((uint64) cargo_ratio_fix16) * ((uint64) inverse_m) * _settings_game.economy.town_growth_cargo_transported) >> 16;
+		uint32 non_cargo_dependant_part = ((uint64) inverse_m) * (100 - _settings_game.economy.town_growth_cargo_transported);
+		uint32 total = (cargo_dependant_part + non_cargo_dependant_part);
+		if (total == 0) return;
+		m = ((uint64) UINT32_MAX * 100) / total;
+	}
 
 	t->growth_rate = m / (t->cache.num_houses / 50 + 1);
 	t->grow_counter = min(t->growth_rate, t->grow_counter);
@@ -3494,7 +3518,7 @@ Town *ClosestTownFromTile(TileIndex tile, uint threshold)
 
 				return town;
 			}
-			/* FALL THROUGH */
+			FALLTHROUGH;
 
 		case MP_HOUSE:
 			return Town::GetByTile(tile);

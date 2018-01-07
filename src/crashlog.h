@@ -103,6 +103,7 @@ protected:
 	char *LogConfiguration(char *buffer, const char *last) const;
 	char *LogLibraries(char *buffer, const char *last) const;
 	char *LogGamelog(char *buffer, const char *last) const;
+	char *LogCommandLog(char *buffer, const char *last) const;
 
 public:
 	/** Stub destructor to silence some compilers. */
@@ -137,6 +138,8 @@ public:
 	static void AfterCrashLogCleanup();
 
 	inline const char *GetMessage() const { return this->message; }
+
+	static const char *GetAbortCrashlogReason();
 };
 
 #endif /* CRASHLOG_H */

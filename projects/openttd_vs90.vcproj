@@ -552,6 +552,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\..\src\dock.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\..\src\driver.cpp"
 				>
 			</File>
@@ -1100,6 +1104,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\..\src\dock_base.h"
+				>
+			</File>
+			<File
 				RelativePath=".\..\src\driver.h"
 				>
 			</File>
@@ -1560,6 +1568,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\..\src\order_cmd.h"
+				>
+			</File>
+			<File
 				RelativePath=".\..\src\order_func.h"
 				>
 			</File>
@@ -1657,6 +1669,10 @@
 			</File>
 			<File
 				RelativePath=".\..\src\video\sdl_v.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\schdispatch.h"
 				>
 			</File>
 			<File
@@ -1781,6 +1797,10 @@
 			</File>
 			<File
 				RelativePath=".\..\src\string_func.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\string_func_extra.h"
 				>
 			</File>
 			<File
@@ -1924,6 +1944,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\..\src\tunnel_base.h"
+				>
+			</File>
+			<File
 				RelativePath=".\..\src\vehicle_base.h"
 				>
 			</File>
@@ -2049,6 +2073,10 @@
 			</File>
 			<File
 				RelativePath=".\..\src\core\container_func.hpp"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\core\dyn_arena_alloc.hpp"
 				>
 			</File>
 			<File
@@ -2301,6 +2329,10 @@
 			</File>
 			<File
 				RelativePath=".\..\src\roadveh_gui.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\schdispatch_gui.cpp"
 				>
 			</File>
 			<File
@@ -2684,6 +2716,10 @@
 				>
 			</File>
 			<File
+				RelativePath=".\..\src\schdispatch_cmd.cpp"
+				>
+			</File>
+			<File
 				RelativePath=".\..\src\ship_cmd.cpp"
 				>
 			</File>
@@ -2901,6 +2937,10 @@
 			</File>
 			<File
 				RelativePath=".\..\src\saveload\town_sl.cpp"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\saveload\tunnel_sl.cpp"
 				>
 			</File>
 			<File
@@ -4685,6 +4725,38 @@
 			</File>
 			<File
 				RelativePath=".\..\src\scope_info.h"
+				>
+			</File>
+		</Filter>
+		<Filter
+			Name="Btree containers"
+			>
+			<File
+				RelativePath=".\..\src\3rdparty\cpp-btree\btree.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\3rdparty\cpp-btree\btree_container.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\3rdparty\cpp-btree\btree_map.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\3rdparty\cpp-btree\btree_set.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\3rdparty\cpp-btree\safe_btree.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\3rdparty\cpp-btree\safe_btree_map.h"
+				>
+			</File>
+			<File
+				RelativePath=".\..\src\3rdparty\cpp-btree\safe_btree_set.h"
 				>
 			</File>
 		</Filter>

@@ -33,7 +33,7 @@
  * The cost estimate of a link graph job is C ~ N^2 log N, where
  * N is the number of nodes in the job link graph.
  * The cost estimate is summed for all running and scheduled jobs to form the total cost estimate T = sum C.
- * The nominal cycle time (in recalc intervals) required to schedule all jobs is calculated as S = log_2 T.
+ * The nominal cycle time (in recalc intervals) required to schedule all jobs is calculated as S = 1 + log_2 T.
  * Hence the nominal duration of an individual job (in recalc intervals) is D = ceil(S * C / T)
  * The cost budget for an individual call to this method is given by T / S.
  *
@@ -46,7 +46,7 @@ void LinkGraphSchedule::SpawnNext()
 	if (this->schedule.empty()) return;
 
 	GraphList schedule_to_back;
-	uint total_cost = 0;
+	uint64 total_cost = 0;
 	for (auto iter = this->schedule.begin(); iter != this->schedule.end();) {
 		auto current = iter;
 		++iter;
@@ -61,23 +61,23 @@ void LinkGraphSchedule::SpawnNext()
 	for (auto &it : this->running) {
 		total_cost += it->Graph().CalculateCostEstimate();
 	}
-	uint scaling = FindLastBit(total_cost);
-	uint cost_budget = total_cost / scaling;
-	uint used_budget = 0;
+	uint scaling = 1 + FindLastBit(total_cost);
+	uint64 cost_budget = total_cost / scaling;
+	uint64 used_budget = 0;
 	std::vector<LinkGraphJobGroup::JobInfo> jobs_to_execute;
 	while (used_budget < cost_budget && !this->schedule.empty()) {
 		LinkGraph *lg = this->schedule.front();
 		assert(lg == LinkGraph::Get(lg->index));
 		this->schedule.pop_front();
-		uint cost = lg->CalculateCostEstimate();
+		uint64 cost = lg->CalculateCostEstimate();
 		used_budget += cost;
 		if (LinkGraphJob::CanAllocateItem()) {
-			uint duration_multiplier = CeilDiv(scaling * cost, total_cost);
+			uint duration_multiplier = CeilDivT<uint64_t>(scaling * cost, total_cost);
 			std::unique_ptr<LinkGraphJob> job(new LinkGraphJob(*lg, duration_multiplier));
 			jobs_to_execute.emplace_back(job.get(), cost);
 			if (this->running.empty() || job->JoinDateTicks() >= this->running.back()->JoinDateTicks()) {
 				this->running.push_back(std::move(job));
-				DEBUG(linkgraph, 3, "LinkGraphSchedule::SpawnNext(): Running job: id: %u, nodes: %u, cost: %u, duration_multiplier: %u",
+				DEBUG(linkgraph, 3, "LinkGraphSchedule::SpawnNext(): Running job: id: %u, nodes: %u, cost: " OTTD_PRINTF64U ", duration_multiplier: %u",
 						lg->index, lg->Size(), cost, duration_multiplier);
 			} else {
 				// find right place to insert
@@ -85,7 +85,7 @@ void LinkGraphSchedule::SpawnNext()
 					return a < b->JoinDateTicks();
 				});
 				this->running.insert(iter, std::move(job));
-				DEBUG(linkgraph, 3, "LinkGraphSchedule::SpawnNext(): Running job (re-ordering): id: %u, nodes: %u, cost: %u, duration_multiplier: %u",
+				DEBUG(linkgraph, 3, "LinkGraphSchedule::SpawnNext(): Running job (re-ordering): id: %u, nodes: %u, cost: " OTTD_PRINTF64U ", duration_multiplier: %u",
 						lg->index, lg->Size(), cost, duration_multiplier);
 			}
 		} else {
@@ -97,7 +97,7 @@ void LinkGraphSchedule::SpawnNext()
 
 	LinkGraphJobGroup::ExecuteJobSet(std::move(jobs_to_execute));
 
-	DEBUG(linkgraph, 2, "LinkGraphSchedule::SpawnNext(): Linkgraph job totals: cost: %u, budget: %u, scaling: %u, scheduled: %zu, running: %zu",
+	DEBUG(linkgraph, 2, "LinkGraphSchedule::SpawnNext(): Linkgraph job totals: cost: " OTTD_PRINTF64U ", budget: " OTTD_PRINTF64U ", scaling: %u, scheduled: %zu, running: %zu",
 			total_cost, cost_budget, scaling, this->schedule.size(), this->running.size());
 }
 
@@ -212,12 +212,12 @@ void LinkGraphSchedule::ShiftDates(int interval)
  */
 LinkGraphSchedule::LinkGraphSchedule()
 {
-	this->handlers[0] = new InitHandler;
-	this->handlers[1] = new DemandHandler;
-	this->handlers[2] = new MCFHandler<MCF1stPass>;
-	this->handlers[3] = new FlowMapper(false);
-	this->handlers[4] = new MCFHandler<MCF2ndPass>;
-	this->handlers[5] = new FlowMapper(true);
+	this->handlers[0].reset(new InitHandler);
+	this->handlers[1].reset(new DemandHandler);
+	this->handlers[2].reset(new MCFHandler<MCF1stPass>);
+	this->handlers[3].reset(new FlowMapper(false));
+	this->handlers[4].reset(new MCFHandler<MCF2ndPass>);
+	this->handlers[5].reset(new FlowMapper(true));
 }
 
 /**
@@ -226,9 +226,6 @@ LinkGraphSchedule::LinkGraphSchedule()
 LinkGraphSchedule::~LinkGraphSchedule()
 {
 	this->Clear();
-	for (uint i = 0; i < lengthof(this->handlers); ++i) {
-		delete this->handlers[i];
-	}
 }
 
 LinkGraphJobGroup::LinkGraphJobGroup(constructor_token token, std::vector<LinkGraphJob *> jobs) :

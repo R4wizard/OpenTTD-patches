@@ -100,6 +100,9 @@
     <Filter Include="Threading">
       <UniqueIdentifier>{c76ff9f1-1e62-46d8-8d55-000000000032}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Btree containers">
+      <UniqueIdentifier>{c76ff9f1-1e62-46d8-8d55-000000000033}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\src\tbtr_template_gui_main.cpp">
@@ -190,6 +193,9 @@
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\disaster_vehicle.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\dock.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\src\driver.cpp">
@@ -600,6 +606,9 @@
     <ClInclude Include="..\src\music\dmusic.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\dock_base.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\driver.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -945,6 +954,9 @@
     <ClInclude Include="..\src\order_base.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\order_cmd.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\order_func.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1018,6 +1030,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\video\sdl_v.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\schdispatch.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\settings_func.h">
@@ -1111,6 +1126,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\string_func.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\string_func_extra.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\src\string_type.h">
@@ -1218,6 +1236,9 @@
     <ClInclude Include="..\src\tunnelbridge.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="..\src\tunnel_base.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
     <ClInclude Include="..\src\vehicle_base.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -1309,6 +1330,9 @@
       <Filter>Core Source Code</Filter>
     </ClInclude>
     <ClInclude Include="..\src\core\container_func.hpp">
+      <Filter>Core Source Code</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\core\dyn_arena_alloc.hpp">
       <Filter>Core Source Code</Filter>
     </ClInclude>
     <ClInclude Include="..\src\core\endian_func.hpp">
@@ -1495,6 +1519,9 @@
       <Filter>GUI Source Code</Filter>
     </ClCompile>
     <ClCompile Include="..\src\roadveh_gui.cpp">
+      <Filter>GUI Source Code</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\schdispatch_gui.cpp">
       <Filter>GUI Source Code</Filter>
     </ClCompile>
     <ClCompile Include="..\src\settings_gui.cpp">
@@ -1776,6 +1803,9 @@
     <ClCompile Include="..\src\roadveh_cmd.cpp">
       <Filter>Command handlers</Filter>
     </ClCompile>
+    <ClCompile Include="..\src\schdispatch_cmd.cpp">
+      <Filter>Command handlers</Filter>
+    </ClCompile>
     <ClCompile Include="..\src\ship_cmd.cpp">
       <Filter>Command handlers</Filter>
     </ClCompile>
@@ -1936,6 +1966,9 @@
       <Filter>Save/Load handlers</Filter>
     </ClCompile>
     <ClCompile Include="..\src\saveload\town_sl.cpp">
+      <Filter>Save/Load handlers</Filter>
+    </ClCompile>
+    <ClCompile Include="..\src\saveload\tunnel_sl.cpp">
       <Filter>Save/Load handlers</Filter>
     </ClCompile>
     <ClCompile Include="..\src\saveload\vehicle_sl.cpp">
@@ -3197,6 +3230,27 @@
     </ClCompile>
     <ClInclude Include="..\src\scope_info.h">
       <Filter>Threading</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdparty\cpp-btree\btree.h">
+      <Filter>Btree containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdparty\cpp-btree\btree_container.h">
+      <Filter>Btree containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdparty\cpp-btree\btree_map.h">
+      <Filter>Btree containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdparty\cpp-btree\btree_set.h">
+      <Filter>Btree containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdparty\cpp-btree\safe_btree.h">
+      <Filter>Btree containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdparty\cpp-btree\safe_btree_map.h">
+      <Filter>Btree containers</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\3rdparty\cpp-btree\safe_btree_set.h">
+      <Filter>Btree containers</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
