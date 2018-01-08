@@ -80,7 +80,7 @@ uint32 _sync_seed_2;                  ///< Second part of the seed.
 uint32 _sync_frame;                   ///< The frame to perform the sync check.
 bool _network_first_time;             ///< Whether we have finished joining or not.
 bool _network_udp_server;             ///< Is the UDP server started?
-bool _network_http_server;             ///< Is the web server started?
+//bool _network_http_server;             ///< Is the web server started?
 uint16 _network_udp_broadcast;        ///< Timeout for the UDP broadcasts.
 uint8 _network_advertise_retries;     ///< The number of advertisement retries we did.
 CompanyMask _network_company_passworded; ///< Bitmask of the password status of all companies.
@@ -93,7 +93,7 @@ extern NetworkUDPSocketHandler *_udp_client_socket; ///< udp client socket
 extern NetworkUDPSocketHandler *_udp_server_socket; ///< udp server socket
 extern NetworkUDPSocketHandler *_udp_master_socket; ///< udp master socket
 
-extern NetworkHTTPHandler *_http_server_handler; ///< http server handler
+//extern NetworkHTTPHandler *_http_server_handler; ///< http server handler
 
 /** The amount of clients connected */
 byte _network_clients_connected = 0;
@@ -762,8 +762,8 @@ bool NetworkServerStart()
 	DEBUG(net, 1, "starting listeners for incoming server queries");
 	_network_udp_server = _udp_server_socket->Listen();
 
-	DEBUG(net, 1, "starting http server listener");
-	_network_http_server = _http_server_handler->Listen();
+	//DEBUG(net, 1, "starting http server listener");
+	//_network_http_server = _http_server_handler->Listen();
 
 	_network_company_states = CallocT<NetworkCompanyState>(MAX_COMPANIES);
 	_network_server = true;
