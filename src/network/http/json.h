@@ -8,15 +8,18 @@
 #define NETWORK_HTTP_JSON_H
 
 #ifdef ENABLE_NETWORK
+#include <list>
+#include <sstream>
+#include <string>
 
 /** Base handler for all web server requests */
 class JSONWriter {
 protected:
 
-	int depth = 0;
-	bool* depth_map = new bool[1];
+	std::list<bool> depth_map;
+	std::stringstream build_buffer;
+	char* built_string = new char[1];
 
-	const char* buffer = "";
 	void Concat(const char* str);
 	void ConcatJSON(const char* tpl, ...);
 	void ConcatComma();
@@ -27,6 +30,7 @@ protected:
 public:
 	JSONWriter();
 	JSONWriter(const char* prefix);
+	~JSONWriter();
 
 	const char* GetString();
 
